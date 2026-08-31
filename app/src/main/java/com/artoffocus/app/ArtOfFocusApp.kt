@@ -2,4 +2,12 @@ package com.artoffocus.app
 
 import android.app.Application
 
-class ArtOfFocusApp : Application()
+class ArtOfFocusApp : Application() {
+    lateinit var container: AppContainer
+        private set
+
+    override fun onCreate() {
+        super.onCreate()
+        container = AppContainer(this)
+    }
+}
