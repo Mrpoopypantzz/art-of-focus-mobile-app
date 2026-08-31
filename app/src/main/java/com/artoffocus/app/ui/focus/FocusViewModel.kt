@@ -7,7 +7,9 @@ import com.artoffocus.app.data.repository.ArtworkRepository
 import com.artoffocus.app.data.repository.FocusSetupRepository
 import com.artoffocus.app.data.repository.MuseumRepository
 import com.artoffocus.app.data.repository.FocusSetup
+import android.content.Context
 import com.artoffocus.app.data.repository.SessionRepository
+import com.artoffocus.app.notifications.NotificationScheduler
 import com.artoffocus.app.domain.focus.AUTO_CONTINUE_MS
 import com.artoffocus.app.domain.focus.AWAY_PROMPT_MS
 import com.artoffocus.app.domain.focus.IDLE_SESSION
@@ -58,6 +60,7 @@ class FocusViewModel(
     private val sessionRepository: SessionRepository,
     private val artworkRepository: ArtworkRepository,
     private val museumRepository: MuseumRepository,
+    private val appContext: Context,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(FocusUiState())
@@ -224,6 +227,7 @@ class FocusViewModel(
     fun confirmCancel() {
         if (_state.value.cancelCountdown != 0) return
         cancelCountdownJob?.cancel()
+        NotificationScheduler.cancelRestEnd(appContext)
         viewModelScope.launch {
             // I12 — abandoning mid-painting: active slot released, nothing written to the Museum.
             artworkRepository.clearActive()
@@ -238,19 +242,26 @@ class FocusViewModel(
 
     fun chooseRest(minutes: Int) {
         val now = System.currentTimeMillis()
-        persistSession(startRest(_state.value.session, minutes, now))
+        val resting = startRest(_state.value.session, minutes, now)
+        persistSession(resting)
+        // F14.1 — scheduled for the exact wall-clock rest end; the worker re-checks state before posting.
+        NotificationScheduler.scheduleRestEnd(appContext, now, minutes, _state.value.pieces)
     }
 
     fun chooseContinue() {
         autoContinueJob?.cancel()
         val now = System.currentTimeMillis()
         val current = _state.value.session
+        val wasResting = current.status == SessionStatus.RESTING || current.status == SessionStatus.REST_COMPLETE
         val next = when (current.status) {
             SessionStatus.SITTING_COMPLETE -> startNextSitting(current, now)
             SessionStatus.RESTING, SessionStatus.REST_COMPLETE -> continueFromRest(current, now)
             else -> current
         }
         persistSession(next)
+        if (wasResting && next.status != current.status) {
+            NotificationScheduler.cancelRestEnd(appContext)
+        }
     }
 
     // --- I7 amendment: away-time prompt ---
@@ -293,10 +304,11 @@ class FocusViewModel(
         private val sessionRepository: SessionRepository,
         private val artworkRepository: ArtworkRepository,
         private val museumRepository: MuseumRepository,
+        private val appContext: Context,
     ) : ViewModelProvider.Factory {
         override fun <T : ViewModel> create(modelClass: Class<T>): T {
             @Suppress("UNCHECKED_CAST")
-            return FocusViewModel(focusSetupRepository, sessionRepository, artworkRepository, museumRepository) as T
+            return FocusViewModel(focusSetupRepository, sessionRepository, artworkRepository, museumRepository, appContext) as T
         }
     }
 }

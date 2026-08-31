@@ -46,12 +46,14 @@ class MainActivity : ComponentActivity() {
 private fun AppShell(container: AppContainer) {
     var tab by remember { mutableStateOf(Tab.FOCUS) }
 
+    val appContext = androidx.compose.ui.platform.LocalContext.current.applicationContext
     val focusViewModel: FocusViewModel = viewModel(
         factory = FocusViewModel.Factory(
             container.focusSetupRepository,
             container.sessionRepository,
             container.artworkRepository,
             container.museumRepository,
+            appContext,
         ),
     )
     val museumViewModel: MuseumViewModel = viewModel(factory = MuseumViewModel.Factory(container.museumRepository))
