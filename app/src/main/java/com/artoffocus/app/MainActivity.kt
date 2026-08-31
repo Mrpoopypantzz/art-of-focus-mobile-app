@@ -23,6 +23,10 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.artoffocus.app.ui.focus.FocusScreen
 import com.artoffocus.app.ui.focus.FocusViewModel
+import com.artoffocus.app.ui.museum.MuseumScreen
+import com.artoffocus.app.ui.museum.MuseumViewModel
+import com.artoffocus.app.ui.profile.ProfileScreen
+import com.artoffocus.app.ui.profile.ProfileViewModel
 
 private enum class Tab(val label: String) { FOCUS("Focus"), MUSEUM("Museum"), PROFILE("Profile"), FRIENDS("Friends") }
 
@@ -49,6 +53,10 @@ private fun AppShell(container: AppContainer) {
             container.artworkRepository,
             container.museumRepository,
         ),
+    )
+    val museumViewModel: MuseumViewModel = viewModel(factory = MuseumViewModel.Factory(container.museumRepository))
+    val profileViewModel: ProfileViewModel = viewModel(
+        factory = ProfileViewModel.Factory(container.profileRepository, container.focusSetupRepository, container.museumRepository),
     )
 
     // I7 amendment — record when the app leaves the foreground, and check the away gap on return.
@@ -82,8 +90,8 @@ private fun AppShell(container: AppContainer) {
         androidx.compose.foundation.layout.Box(modifier = Modifier.padding(padding)) {
             when (tab) {
                 Tab.FOCUS -> FocusScreen(focusViewModel)
-                Tab.MUSEUM -> PlaceholderScreen("Museum")
-                Tab.PROFILE -> PlaceholderScreen("Profile")
+                Tab.MUSEUM -> MuseumScreen(museumViewModel)
+                Tab.PROFILE -> ProfileScreen(profileViewModel)
                 Tab.FRIENDS -> PlaceholderScreen("Friends")
             }
         }
