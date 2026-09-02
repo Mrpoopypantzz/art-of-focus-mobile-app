@@ -3,12 +3,12 @@ package com.artoffocus.app
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.NavigationBar
-import androidx.compose.material3.NavigationBarItem
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.ui.Alignment
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -27,6 +27,10 @@ import com.artoffocus.app.ui.museum.MuseumScreen
 import com.artoffocus.app.ui.museum.MuseumViewModel
 import com.artoffocus.app.ui.profile.ProfileScreen
 import com.artoffocus.app.ui.profile.ProfileViewModel
+import com.artoffocus.app.ui.common.TabBar
+import com.artoffocus.app.ui.common.TabBarItem
+import com.artoffocus.app.ui.theme.ArtOfFocusTheme
+import com.artoffocus.app.ui.theme.AppColors
 
 private enum class Tab(val label: String) { FOCUS("Focus"), MUSEUM("Museum"), PROFILE("Profile"), FRIENDS("Friends") }
 
@@ -34,7 +38,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
-            MaterialTheme {
+            ArtOfFocusTheme {
                 val container = (application as ArtOfFocusApp).container
                 AppShell(container)
             }
@@ -75,21 +79,8 @@ private fun AppShell(container: AppContainer) {
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
-    Scaffold(
-        bottomBar = {
-            NavigationBar {
-                Tab.entries.forEach { entry ->
-                    NavigationBarItem(
-                        selected = tab == entry,
-                        onClick = { tab = entry },
-                        icon = {},
-                        label = { Text(entry.label) },
-                    )
-                }
-            }
-        },
-    ) { padding ->
-        androidx.compose.foundation.layout.Box(modifier = Modifier.padding(padding)) {
+    Box(modifier = Modifier.fillMaxSize().background(AppColors.Bg)) {
+        Box(modifier = Modifier.fillMaxSize().padding(bottom = 78.dp)) {
             when (tab) {
                 Tab.FOCUS -> FocusScreen(focusViewModel)
                 Tab.MUSEUM -> MuseumScreen(museumViewModel)
@@ -97,6 +88,11 @@ private fun AppShell(container: AppContainer) {
                 Tab.FRIENDS -> PlaceholderScreen("Friends")
             }
         }
+
+        TabBar(
+            items = Tab.entries.map { entry -> TabBarItem(entry.label, tab == entry) { tab = entry } },
+            modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 20.dp),
+        )
     }
 }
 

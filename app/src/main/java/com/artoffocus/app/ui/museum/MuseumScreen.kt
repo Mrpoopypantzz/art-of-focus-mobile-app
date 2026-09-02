@@ -1,6 +1,5 @@
 package com.artoffocus.app.ui.museum
 
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -26,9 +25,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.dp
-import com.artoffocus.app.domain.focus.paintingGradient
 import com.artoffocus.app.domain.museum.CompletedPainting
 import com.artoffocus.app.domain.museum.formatFocusSpan
+import com.artoffocus.app.ui.common.PaintingArt
 
 @Composable
 fun MuseumScreen(viewModel: MuseumViewModel) {
@@ -83,15 +82,14 @@ private fun TimelineView(groups: List<com.artoffocus.app.domain.museum.MonthGrou
 
 @Composable
 private fun PaintingTile(painting: CompletedPainting) {
-    val gradientBrush = gradientFromCss(paintingGradient(painting.painting))
     Box(
         modifier = Modifier
             .padding(4.dp)
             .aspectRatio(0.8f)
-            .clip(RoundedCornerShape(8.dp))
-            .background(gradientBrush),
+            .clip(RoundedCornerShape(8.dp)),
         contentAlignment = Alignment.BottomStart,
     ) {
+        PaintingArt(painting = painting.painting, modifier = Modifier.fillMaxSize())
         Text(
             painting.painting.title,
             color = androidx.compose.ui.graphics.Color.White,
@@ -110,14 +108,4 @@ private fun PaintingRow(painting: CompletedPainting) {
             style = MaterialTheme.typography.bodySmall,
         )
     }
-}
-
-/** Approximates the CSS linear-gradient string with a Compose brush (angle/stops are not pixel-matched). */
-private fun gradientFromCss(css: String): androidx.compose.ui.graphics.Brush {
-    val hexColors = Regex("#[0-9a-fA-F]{6}").findAll(css).map {
-        androidx.compose.ui.graphics.Color(android.graphics.Color.parseColor(it.value))
-    }.toList()
-    return androidx.compose.ui.graphics.Brush.linearGradient(
-        colors = hexColors.ifEmpty { listOf(androidx.compose.ui.graphics.Color.Gray) },
-    )
 }

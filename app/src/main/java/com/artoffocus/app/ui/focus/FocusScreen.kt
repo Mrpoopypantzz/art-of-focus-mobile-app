@@ -1,11 +1,14 @@
 package com.artoffocus.app.ui.focus
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -16,10 +19,8 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -29,8 +30,11 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import com.artoffocus.app.domain.focus.Painting
 import com.artoffocus.app.domain.focus.SessionStatus
 import com.artoffocus.app.domain.focus.describeSessionProgress
 import com.artoffocus.app.domain.focus.elapsedMs
@@ -45,6 +49,12 @@ import com.artoffocus.app.domain.focus.restOptions
 import com.artoffocus.app.domain.focus.sessionProgress
 import com.artoffocus.app.domain.focus.sittingsFor
 import com.artoffocus.app.domain.focus.totalAnchors
+import com.artoffocus.app.ui.common.DangerButton
+import com.artoffocus.app.ui.common.PaintingArt
+import com.artoffocus.app.ui.common.PrimaryButton
+import com.artoffocus.app.ui.common.QuietButton
+import com.artoffocus.app.ui.theme.AppColors
+import com.artoffocus.app.ui.theme.AppRadius
 
 @Composable
 fun FocusScreen(viewModel: FocusViewModel) {
@@ -91,9 +101,9 @@ private fun SetupContent(
                 val selected = anchor.value == totalMinutes
                 val label = formatDuration(anchor.value)
                 if (selected) {
-                    Button(onClick = { onSelect(anchor.value, sittingsFor(anchor.value).first()) }) { Text(label) }
+                    PrimaryButton(onClick = { onSelect(anchor.value, sittingsFor(anchor.value).first()) }) { Text(label) }
                 } else {
-                    OutlinedButton(onClick = { onSelect(anchor.value, sittingsFor(anchor.value).first()) }) { Text(label) }
+                    QuietButton(onClick = { onSelect(anchor.value, sittingsFor(anchor.value).first()) }) { Text(label) }
                 }
             }
         }
@@ -106,9 +116,9 @@ private fun SetupContent(
                 val selected = sitting == sittingMinutes
                 val label = formatDuration(sitting)
                 if (selected) {
-                    Button(onClick = { onSelect(totalMinutes, sitting) }) { Text(label) }
+                    PrimaryButton(onClick = { onSelect(totalMinutes, sitting) }) { Text(label) }
                 } else {
-                    OutlinedButton(onClick = { onSelect(totalMinutes, sitting) }) { Text(label) }
+                    QuietButton(onClick = { onSelect(totalMinutes, sitting) }) { Text(label) }
                 }
             }
         }
@@ -118,7 +128,7 @@ private fun SetupContent(
         Text("$pieces sittings · one puzzle piece each", style = MaterialTheme.typography.bodyMedium)
 
         androidx.compose.foundation.layout.Spacer(Modifier.height(32.dp))
-        Button(onClick = onStart) { Text("Start") }
+        PrimaryButton(onClick = onStart) { Text("Start") }
     }
 }
 
@@ -128,12 +138,17 @@ private fun RunningContent(state: FocusUiState, viewModel: FocusViewModel) {
     val revealed = revealedCount(state.session, state.pieces)
 
     Column(modifier = Modifier.fillMaxSize().padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-        PuzzleMosaic(pieces = state.pieces, revealed = revealed, modifier = Modifier.fillMaxWidth().padding(16.dp))
+        PuzzleMosaic(
+            painting = state.painting,
+            pieces = state.pieces,
+            revealed = revealed,
+            modifier = Modifier.fillMaxWidth().padding(16.dp),
+        )
 
         Text(describeSessionProgress(progress, state.pieces), style = MaterialTheme.typography.bodyMedium)
-        Text(
-            formatElapsed(elapsedMs(state.session, state.now)),
-            style = MaterialTheme.typography.displayMedium,
+        StopwatchText(
+            text = formatElapsed(elapsedMs(state.session, state.now)),
+            isLive = state.session.status == SessionStatus.RUNNING,
         )
 
         androidx.compose.foundation.layout.Spacer(Modifier.height(16.dp))
@@ -149,27 +164,57 @@ private fun RunningContent(state: FocusUiState, viewModel: FocusViewModel) {
     }
 }
 
+private val gildedTileBrush = Brush.linearGradient(listOf(AppColors.GildedStart, AppColors.GildedEnd))
+private val cardShape = RoundedCornerShape(AppRadius.lg)
+
+/**
+ * The painting card: [PaintingArt] fills the frame, gilded tiles cover the pieces not yet
+ * earned, and a revealed tile renders as fully transparent so the artwork beneath shows
+ * through — this is the fix for the previous version, which rendered revealed pieces as a
+ * flat color instead of the actual painting.
+ */
 @Composable
-private fun PuzzleMosaic(pieces: Int, revealed: Int, modifier: Modifier = Modifier) {
+private fun PuzzleMosaic(painting: Painting?, pieces: Int, revealed: Int, modifier: Modifier = Modifier) {
     val layout = layoutFor(pieces)
-    LazyVerticalGrid(
-        columns = GridCells.Fixed(layout.cols),
-        modifier = modifier.height(280.dp),
-        userScrollEnabled = false,
+
+    Box(
+        modifier = modifier
+            .aspectRatio(4f / 5f)
+            .shadow(elevation = 8.dp, shape = cardShape, ambientColor = AppColors.Ink.copy(alpha = 0.08f), spotColor = AppColors.Ink.copy(alpha = 0.08f))
+            .clip(cardShape)
+            .background(AppColors.Surface)
+            .border(1.dp, AppColors.Ink.copy(alpha = 0.28f), cardShape),
     ) {
-        items(pieces) { index ->
-            val isRevealed = index < revealed
+        painting?.let { PaintingArt(painting = it, modifier = Modifier.matchParentSize()) }
+
+        var index = 0
+        Column(modifier = Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(1.dp)) {
+            repeat(layout.completeRows) {
+                MosaicRow(cols = layout.cols, revealed = revealed, startIndex = index)
+                index += layout.cols
+            }
+            if (layout.lastRowCount > 0) {
+                MosaicRow(cols = layout.lastRowCount, revealed = revealed, startIndex = index)
+            }
+        }
+    }
+}
+
+@Composable
+private fun androidx.compose.foundation.layout.ColumnScope.MosaicRow(cols: Int, revealed: Int, startIndex: Int) {
+    Row(
+        modifier = Modifier.fillMaxWidth().weight(1f),
+        horizontalArrangement = Arrangement.spacedBy(1.dp),
+    ) {
+        repeat(cols) { i ->
+            val tileIndex = startIndex + i
+            val isRevealed = tileIndex < revealed
             Box(
                 modifier = Modifier
-                    .padding(2.dp)
-                    .aspectRatio(1f)
-                    .clip(RoundedCornerShape(4.dp)),
-            ) {
-                Surface(
-                    modifier = Modifier.fillMaxSize(),
-                    color = if (isRevealed) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
-                ) {}
-            }
+                    .weight(1f)
+                    .fillMaxHeight()
+                    .then(if (isRevealed) Modifier else Modifier.background(gildedTileBrush).border(1.dp, AppColors.Ink.copy(alpha = 0.12f))),
+            )
         }
     }
 }
@@ -177,7 +222,7 @@ private fun PuzzleMosaic(pieces: Int, revealed: Int, modifier: Modifier = Modifi
 @Composable
 private fun RunningControls(state: FocusUiState, viewModel: FocusViewModel) {
     Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-        OutlinedButton(onClick = viewModel::pause) { Text("Pause") }
+        QuietButton(onClick = viewModel::pause) { Text("Pause") }
         CancelButton(state.cancelCountdown, viewModel)
     }
 }
@@ -185,7 +230,7 @@ private fun RunningControls(state: FocusUiState, viewModel: FocusViewModel) {
 @Composable
 private fun PausedControls(viewModel: FocusViewModel) {
     Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-        Button(onClick = viewModel::resume) { Text("Resume") }
+        PrimaryButton(onClick = viewModel::resume) { Text("Resume") }
         CancelButton(null, viewModel)
     }
 }
@@ -199,7 +244,7 @@ private fun CancelButton(cancelCountdown: Int?, viewModel: FocusViewModel) {
             Text("Cancelling in $cancelCountdown…", style = MaterialTheme.typography.bodySmall)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 TextButton(onClick = viewModel::abortCancelRequest) { Text("Keep going") }
-                Button(onClick = viewModel::confirmCancel, enabled = cancelCountdown == 0) { Text("Confirm cancel") }
+                DangerButton(onClick = viewModel::confirmCancel, enabled = cancelCountdown == 0) { Text("Confirm cancel") }
             }
         }
     }
@@ -211,13 +256,13 @@ private fun SittingCompleteControls(viewModel: FocusViewModel) {
         Text("Piece revealed! Continue or take a rest?", textAlign = TextAlign.Center)
         androidx.compose.foundation.layout.Spacer(Modifier.height(8.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            Button(onClick = viewModel::chooseContinue) { Text("Continue") }
+            PrimaryButton(onClick = viewModel::chooseContinue) { Text("Continue") }
         }
         androidx.compose.foundation.layout.Spacer(Modifier.height(8.dp))
         Text("Take a rest", style = MaterialTheme.typography.bodySmall)
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             restOptions().take(4).forEach { minutes ->
-                OutlinedButton(onClick = { viewModel.chooseRest(minutes) }) { Text("${minutes}m") }
+                QuietButton(onClick = { viewModel.chooseRest(minutes) }) { Text("${minutes}m") }
             }
         }
     }
@@ -233,7 +278,7 @@ private fun RestingControls(state: FocusUiState, viewModel: FocusViewModel) {
         if (lockRemaining > 0) {
             Text("Continue available in ${(lockRemaining / 1000)}s", style = MaterialTheme.typography.bodySmall)
         } else {
-            Button(onClick = viewModel::chooseContinue) { Text("Continue now") }
+            PrimaryButton(onClick = viewModel::chooseContinue) { Text("Continue now") }
         }
     }
 }
@@ -243,7 +288,7 @@ private fun RestCompleteControls(viewModel: FocusViewModel) {
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
         Text("Rest complete")
         androidx.compose.foundation.layout.Spacer(Modifier.height(8.dp))
-        Button(onClick = viewModel::chooseContinue) { Text("Continue") }
+        PrimaryButton(onClick = viewModel::chooseContinue) { Text("Continue") }
     }
 }
 

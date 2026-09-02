@@ -8,10 +8,8 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
@@ -32,6 +30,8 @@ import com.artoffocus.app.domain.achievements.valueFor
 import com.artoffocus.app.domain.focus.FocusLevel
 import com.artoffocus.app.domain.museum.formatFocusSpan
 import com.artoffocus.app.domain.profile.displayName
+import com.artoffocus.app.ui.common.PrimaryButton
+import com.artoffocus.app.ui.common.QuietButton
 
 private enum class ProfileTab { STATS, ACHIEVEMENTS, SETTINGS }
 
@@ -121,7 +121,7 @@ private fun SettingsTab(state: ProfileUiState, viewModel: ProfileViewModel) {
         androidx.compose.foundation.layout.Spacer(Modifier.height(8.dp))
         OutlinedTextField(value = goal, onValueChange = { goal = it }, label = { Text("Long-term goal") }, modifier = Modifier.fillMaxWidth())
         androidx.compose.foundation.layout.Spacer(Modifier.height(8.dp))
-        Button(onClick = { viewModel.saveIdentity(username, goal) }) { Text("Save") }
+        PrimaryButton(onClick = { viewModel.saveIdentity(username, goal) }) { Text("Save") }
 
         androidx.compose.foundation.layout.Spacer(Modifier.height(24.dp))
         Text("Focus level", style = MaterialTheme.typography.titleMedium)
@@ -133,9 +133,9 @@ private fun SettingsTab(state: ProfileUiState, viewModel: ProfileViewModel) {
             FocusLevel.entries.forEach { level ->
                 val selected = level == state.profile.level
                 if (selected) {
-                    Button(onClick = { viewModel.saveLevel(level) }) { Text(level.name.lowercase().replaceFirstChar { it.uppercase() }) }
+                    PrimaryButton(onClick = { viewModel.saveLevel(level) }) { Text(level.name.lowercase().replaceFirstChar { it.uppercase() }) }
                 } else {
-                    OutlinedButton(onClick = { viewModel.saveLevel(level) }) { Text(level.name.lowercase().replaceFirstChar { it.uppercase() }) }
+                    QuietButton(onClick = { viewModel.saveLevel(level) }) { Text(level.name.lowercase().replaceFirstChar { it.uppercase() }) }
                 }
             }
         }
