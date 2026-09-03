@@ -1,6 +1,9 @@
 package com.artoffocus.app.ui.profile
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -8,12 +11,10 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Card
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.SegmentedButton
-import androidx.compose.material3.SegmentedButtonDefaults
-import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -21,7 +22,9 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.artoffocus.app.domain.account.AccountStatus
@@ -29,12 +32,14 @@ import com.artoffocus.app.domain.achievements.Achievement
 import com.artoffocus.app.domain.achievements.describeEarned
 import com.artoffocus.app.domain.achievements.nextAchievement
 import com.artoffocus.app.domain.achievements.valueFor
+import com.artoffocus.app.domain.focus.DEFAULT_TOTAL_MINUTES
 import com.artoffocus.app.domain.focus.FocusLevel
+import com.artoffocus.app.domain.focus.formatDuration
 import com.artoffocus.app.domain.museum.formatFocusSpan
-import com.artoffocus.app.domain.profile.displayName
 import com.artoffocus.app.ui.common.DangerButton
 import com.artoffocus.app.ui.common.PrimaryButton
-import com.artoffocus.app.ui.common.QuietButton
+import com.artoffocus.app.ui.theme.AppColors
+import com.artoffocus.app.ui.theme.AppRadius
 import com.artoffocus.app.ui.theme.AppSpacing
 import com.artoffocus.app.ui.theme.EyebrowStyle
 import com.artoffocus.app.ui.theme.StatValueStyle
@@ -48,17 +53,11 @@ fun ProfileScreen(viewModel: ProfileViewModel) {
     var tab by remember { mutableStateOf(ProfileTab.STATS) }
 
     Column(modifier = Modifier.fillMaxWidth().padding(AppSpacing.screenPadding)) {
-        Text(displayName(state.profile), style = MaterialTheme.typography.headlineSmall)
+        Text("Profile", style = MaterialTheme.typography.headlineSmall)
+        androidx.compose.foundation.layout.Spacer(Modifier.height(AppSpacing.s4))
 
-        SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp)) {
-            ProfileTab.entries.forEachIndexed { index, entry ->
-                SegmentedButton(
-                    selected = tab == entry,
-                    onClick = { tab = entry },
-                    shape = SegmentedButtonDefaults.itemShape(index, ProfileTab.entries.size),
-                ) { Text(entry.name.lowercase().replaceFirstChar { it.uppercase() }) }
-            }
-        }
+        ProfileTabRow(selected = tab, onSelect = { tab = it })
+        androidx.compose.foundation.layout.Spacer(Modifier.height(AppSpacing.s4))
 
         when (tab) {
             ProfileTab.STATS -> StatsTab(state)
@@ -68,22 +67,42 @@ fun ProfileScreen(viewModel: ProfileViewModel) {
     }
 }
 
+/** Profile's own tabs — the same ink/sunken-surface pill pattern as Focus's TierAnchorRow. */
+@Composable
+private fun ProfileTabRow(selected: ProfileTab, onSelect: (ProfileTab) -> Unit) {
+    Row(horizontalArrangement = Arrangement.spacedBy(AppSpacing.s2), modifier = Modifier.fillMaxWidth()) {
+        ProfileTab.entries.forEach { entry ->
+            val isSelected = entry == selected
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .height(34.dp)
+                    .clip(AppRadius.pill)
+                    .background(if (isSelected) AppColors.Ink else AppColors.SurfaceSunken)
+                    .clickable { onSelect(entry) },
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    entry.name.uppercase(),
+                    color = if (isSelected) AppColors.OnInk else AppColors.TextDim,
+                    style = MaterialTheme.typography.labelSmall,
+                )
+            }
+        }
+    }
+}
+
 @Composable
 private fun StatsTab(state: ProfileUiState) {
     val stats = state.statistics
-    val entries = buildList {
-        add("Paintings completed" to stats.count.toString())
-        add("Total focus" to formatFocusSpan(stats.focusMinutes))
-        add("Longest painting" to formatFocusSpan(stats.longestMinutes))
-        add("Average painting" to formatFocusSpan(stats.averageMinutes))
-        add("Current streak" to "${stats.currentStreak} days")
-        add("Longest streak" to "${stats.longestStreak} days")
-        stats.bestMonth?.let { add("Best month" to it) }
-    }
+    val entries = listOf(
+        "Paintings" to stats.count.toString(),
+        "Total focus" to formatFocusSpan(stats.focusMinutes),
+        "Current streak" to "${stats.currentStreak} days",
+        "Longest streak" to "${stats.longestStreak} days",
+    )
 
     Column {
-        Text("Statistics count finished paintings only.", style = MaterialTheme.typography.bodySmall)
-        androidx.compose.foundation.layout.Spacer(Modifier.height(AppSpacing.s4))
         entries.chunked(2).forEach { pair ->
             Row(
                 modifier = Modifier.fillMaxWidth().padding(vertical = AppSpacing.s2),
@@ -93,6 +112,12 @@ private fun StatsTab(state: ProfileUiState) {
                 if (pair.size == 1) androidx.compose.foundation.layout.Spacer(Modifier.weight(1f))
             }
         }
+        stats.bestMonth?.let {
+            androidx.compose.foundation.layout.Spacer(Modifier.height(AppSpacing.s3))
+            Text("Most focused month: $it", style = MaterialTheme.typography.bodySmall)
+        }
+        androidx.compose.foundation.layout.Spacer(Modifier.height(AppSpacing.s2))
+        Text("Counts finished paintings only.", style = MaterialTheme.typography.bodySmall)
     }
 }
 
@@ -148,19 +173,36 @@ private fun SettingsTab(state: ProfileUiState, viewModel: ProfileViewModel) {
             "Sets defaults only — never limits which durations you can pick, even mid-painting.",
             style = MaterialTheme.typography.bodySmall,
         )
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 8.dp)) {
-            FocusLevel.entries.forEach { level ->
-                val selected = level == state.profile.level
-                if (selected) {
-                    PrimaryButton(onClick = { viewModel.saveLevel(level) }) { Text(level.name.lowercase().replaceFirstChar { it.uppercase() }) }
-                } else {
-                    QuietButton(onClick = { viewModel.saveLevel(level) }) { Text(level.name.lowercase().replaceFirstChar { it.uppercase() }) }
-                }
-            }
+        Row(horizontalArrangement = Arrangement.spacedBy(AppSpacing.s2), modifier = Modifier.padding(top = 8.dp)) {
+            FocusLevel.entries.forEach { level -> FocusLevelCard(level, level == state.profile.level, Modifier.weight(1f)) { viewModel.saveLevel(level) } }
         }
 
         androidx.compose.foundation.layout.Spacer(Modifier.height(24.dp))
         AccountSection(state, viewModel)
+    }
+}
+
+/** Stacked name + default-duration card, matching web's .profile__level (not a pill — see ProfileScreen.css). */
+@Composable
+private fun FocusLevelCard(level: FocusLevel, selected: Boolean, modifier: Modifier = Modifier, onClick: () -> Unit) {
+    Column(
+        modifier = modifier
+            .clip(RoundedCornerShape(AppRadius.md))
+            .background(if (selected) AppColors.Ink else AppColors.SurfaceSunken)
+            .clickable(onClick = onClick)
+            .padding(AppSpacing.s2),
+        verticalArrangement = Arrangement.spacedBy(2.dp),
+    ) {
+        Text(
+            level.name.lowercase().replaceFirstChar { it.uppercase() },
+            color = if (selected) AppColors.OnInk else AppColors.TextDim,
+            style = MaterialTheme.typography.bodyMedium,
+        )
+        Text(
+            formatDuration(DEFAULT_TOTAL_MINUTES.getValue(level)),
+            color = if (selected) AppColors.OnInk else AppColors.TextDim,
+            style = MaterialTheme.typography.titleMedium,
+        )
     }
 }
 

@@ -1,11 +1,13 @@
 package com.artoffocus.app.ui.common
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.snapping.SnapPosition
 import androidx.compose.foundation.gestures.snapping.rememberSnapFlingBehavior
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.width
@@ -22,6 +24,7 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -45,7 +48,12 @@ fun WheelPicker(
     val itemWidth = 96.dp
     val itemHeight = 52.dp
 
-    BoxWithConstraints(modifier = modifier.height(64.dp)) {
+    BoxWithConstraints(
+        modifier = modifier
+            .height(64.dp)
+            .clip(RoundedCornerShape(AppRadius.md))
+            .background(AppColors.SurfaceSunken),
+    ) {
         val sidePadding = ((maxWidth - itemWidth) / 2).coerceAtLeast(0.dp)
         val listState = rememberLazyListState()
         val selectedIndex = values.indexOf(selected).coerceAtLeast(0)
@@ -97,7 +105,10 @@ fun WheelPicker(
             items(values) { value ->
                 val isSelected = value == selected
                 Box(
-                    modifier = Modifier.width(itemWidth).height(itemHeight),
+                    modifier = Modifier
+                        .width(itemWidth)
+                        .height(itemHeight)
+                        .clickable(enabled = !isSelected) { onSelect(value) },
                     contentAlignment = Alignment.Center,
                 ) {
                     Text(
@@ -110,5 +121,21 @@ fun WheelPicker(
                 }
             }
         }
+
+        // Fade the options approaching the edges so the wheel reads as curved (Wheel.css).
+        Box(
+            modifier = Modifier
+                .align(Alignment.CenterStart)
+                .width(itemWidth)
+                .fillMaxHeight()
+                .background(Brush.horizontalGradient(listOf(AppColors.SurfaceSunken, AppColors.SurfaceSunken.copy(alpha = 0f)))),
+        )
+        Box(
+            modifier = Modifier
+                .align(Alignment.CenterEnd)
+                .width(itemWidth)
+                .fillMaxHeight()
+                .background(Brush.horizontalGradient(listOf(AppColors.SurfaceSunken.copy(alpha = 0f), AppColors.SurfaceSunken))),
+        )
     }
 }

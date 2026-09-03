@@ -106,6 +106,7 @@ fun FocusScreen(viewModel: FocusViewModel) {
                 onDismiss = { setupSheetOpen = false },
                 onStart = { total, sitting ->
                     viewModel.selectSetup(total, sitting)
+                    viewModel.startFocusSession()
                     setupSheetOpen = false
                 },
             )
