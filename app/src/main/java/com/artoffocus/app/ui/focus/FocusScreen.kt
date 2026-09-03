@@ -2,10 +2,10 @@ package com.artoffocus.app.ui.focus
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.aspectRatio
@@ -15,10 +15,10 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.lazy.grid.GridCells
-import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.MaterialTheme
@@ -28,6 +28,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -36,29 +37,36 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import com.artoffocus.app.domain.focus.FocusLevel
 import com.artoffocus.app.domain.focus.Painting
 import com.artoffocus.app.domain.focus.SessionStatus
+import com.artoffocus.app.domain.focus.TOTAL_LADDER
+import com.artoffocus.app.domain.focus.describePieces
 import com.artoffocus.app.domain.focus.describeSessionProgress
 import com.artoffocus.app.domain.focus.elapsedMs
 import com.artoffocus.app.domain.focus.formatAway
 import com.artoffocus.app.domain.focus.formatDuration
 import com.artoffocus.app.domain.focus.formatElapsed
 import com.artoffocus.app.domain.focus.layoutFor
+import com.artoffocus.app.domain.focus.pieceCount
 import com.artoffocus.app.domain.focus.restLockRemainingMs
 import com.artoffocus.app.domain.focus.restRemainingMs
 import com.artoffocus.app.domain.focus.revealedCount
 import com.artoffocus.app.domain.focus.restOptions
 import com.artoffocus.app.domain.focus.sessionProgress
+import com.artoffocus.app.domain.focus.sittingAnchors
 import com.artoffocus.app.domain.focus.sittingsFor
 import com.artoffocus.app.domain.focus.totalAnchors
 import com.artoffocus.app.ui.common.DangerButton
 import com.artoffocus.app.ui.common.PaintingArt
 import com.artoffocus.app.ui.common.PrimaryButton
 import com.artoffocus.app.ui.common.QuietButton
+import com.artoffocus.app.ui.common.WheelPicker
 import com.artoffocus.app.ui.theme.AppColors
 import com.artoffocus.app.ui.theme.AppRadius
 import com.artoffocus.app.ui.theme.AppSpacing
 import com.artoffocus.app.ui.theme.screenPadding
+import kotlin.math.abs
 
 @Composable
 fun FocusScreen(viewModel: FocusViewModel) {
@@ -87,6 +95,19 @@ fun FocusScreen(viewModel: FocusViewModel) {
     }
 }
 
+/** Short/Medium/Long — the web app's tier-anchor labels, distinct from the Profile's Beginner/Intermediate/Advanced. */
+private fun tierLabel(level: FocusLevel): String = when (level) {
+    FocusLevel.BEGINNER -> "Short"
+    FocusLevel.INTERMEDIATE -> "Medium"
+    FocusLevel.ADVANCED -> "Long"
+}
+
+/** Total changed — carry the sitting forward to the closest still-valid option rather than resetting to the first. */
+private fun closestSitting(total: Int, previousSitting: Int): Int {
+    val options = sittingsFor(total)
+    return options.minByOrNull { abs(it - previousSitting) } ?: options.first()
+}
+
 @Composable
 private fun SetupContent(
     totalMinutes: Int,
@@ -94,51 +115,151 @@ private fun SetupContent(
     onSelect: (Int, Int) -> Unit,
     onStart: () -> Unit,
 ) {
-    Column(
-        modifier = Modifier.fillMaxSize().padding(AppSpacing.screenPadding),
-        verticalArrangement = Arrangement.Center,
-        horizontalAlignment = Alignment.CenterHorizontally,
+    val pieces = pieceCount(totalMinutes, sittingMinutes)
+
+    Box(modifier = Modifier.fillMaxSize()) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState())
+                .padding(AppSpacing.screenPadding)
+                .padding(bottom = 88.dp),
+        ) {
+            Text("Set your tempo", style = MaterialTheme.typography.headlineSmall)
+            androidx.compose.foundation.layout.Spacer(Modifier.height(AppSpacing.s1))
+            Text(
+                "Choose how long the whole painting takes, then how long one sitting runs.",
+                style = MaterialTheme.typography.bodySmall,
+            )
+
+            if (pieces != null) {
+                androidx.compose.foundation.layout.Spacer(Modifier.height(AppSpacing.s6))
+                Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        SetupPuzzlePreview(pieces)
+                        androidx.compose.foundation.layout.Spacer(Modifier.height(AppSpacing.s2))
+                        Text(
+                            "$pieces piece${if (pieces == 1) "" else "s"} to uncover",
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                    }
+                }
+            }
+
+            androidx.compose.foundation.layout.Spacer(Modifier.height(AppSpacing.s6))
+
+            StepHeader(1, "Total Focus", "How much deep work this masterpiece is worth.")
+            androidx.compose.foundation.layout.Spacer(Modifier.height(AppSpacing.s3))
+            TierAnchorRow(
+                anchors = totalAnchors().map { it.level to it.value },
+                selected = totalMinutes,
+                onSelect = { value -> onSelect(value, closestSitting(value, sittingMinutes)) },
+            )
+            androidx.compose.foundation.layout.Spacer(Modifier.height(AppSpacing.s2))
+            WheelPicker(
+                values = TOTAL_LADDER,
+                selected = totalMinutes,
+                onSelect = { value -> onSelect(value, closestSitting(value, sittingMinutes)) },
+                label = ::formatDuration,
+            )
+
+            androidx.compose.foundation.layout.Spacer(Modifier.height(AppSpacing.s6))
+
+            StepHeader(2, "Single Sitting", "One unbroken stretch at the easel.")
+            androidx.compose.foundation.layout.Spacer(Modifier.height(AppSpacing.s3))
+            TierAnchorRow(
+                anchors = sittingAnchors(totalMinutes).map { it.level to it.value },
+                selected = sittingMinutes,
+                onSelect = { value -> onSelect(totalMinutes, value) },
+            )
+            androidx.compose.foundation.layout.Spacer(Modifier.height(AppSpacing.s2))
+            WheelPicker(
+                values = sittingsFor(totalMinutes),
+                selected = sittingMinutes,
+                onSelect = { value -> onSelect(totalMinutes, value) },
+                label = ::formatDuration,
+            )
+            androidx.compose.foundation.layout.Spacer(Modifier.height(AppSpacing.s2))
+            Text(describePieces(totalMinutes, sittingMinutes) ?: " ", style = MaterialTheme.typography.bodySmall)
+        }
+
+        PrimaryButton(
+            onClick = onStart,
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .fillMaxWidth()
+                .padding(horizontal = AppSpacing.s5, vertical = AppSpacing.s4),
+        ) { Text("Start") }
+    }
+}
+
+@Composable
+private fun StepHeader(number: Int, title: String, hint: String) {
+    Row(horizontalArrangement = Arrangement.spacedBy(AppSpacing.s3)) {
+        Box(
+            modifier = Modifier.size(28.dp).clip(CircleShape).background(AppColors.Ink),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(number.toString(), color = AppColors.OnInk, style = MaterialTheme.typography.labelSmall)
+        }
+        Column {
+            Text(title, style = MaterialTheme.typography.titleMedium)
+            Text(hint, style = MaterialTheme.typography.bodySmall)
+        }
+    }
+}
+
+@Composable
+private fun TierAnchorRow(anchors: List<Pair<FocusLevel, Int>>, selected: Int, onSelect: (Int) -> Unit) {
+    Row(horizontalArrangement = Arrangement.spacedBy(AppSpacing.s2), modifier = Modifier.fillMaxWidth()) {
+        anchors.forEach { (level, value) ->
+            val isSelected = value == selected
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .height(36.dp)
+                    .clip(AppRadius.pill)
+                    .background(if (isSelected) AppColors.Ink else AppColors.SurfaceSunken)
+                    .clickable { onSelect(value) },
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    tierLabel(level).uppercase(),
+                    color = if (isSelected) AppColors.OnInk else AppColors.TextDim,
+                    style = MaterialTheme.typography.labelSmall,
+                )
+            }
+        }
+    }
+}
+
+/** The setup-time preview: gilded tiles over a plain surface — no painting exists yet (I6). */
+@Composable
+private fun SetupPuzzlePreview(pieces: Int, modifier: Modifier = Modifier) {
+    val layout = layoutFor(pieces)
+    val previewShape = RoundedCornerShape(AppRadius.lg)
+
+    Box(
+        modifier = modifier
+            .width(150.dp)
+            .aspectRatio(4f / 5f)
+            .clip(previewShape)
+            .background(AppColors.Surface)
+            .border(1.dp, AppColors.Ink.copy(alpha = 0.28f), previewShape),
     ) {
-        Text("Total Focus", style = MaterialTheme.typography.titleMedium)
-        Row(
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
-        ) {
-            totalAnchors().forEach { anchor ->
-                val selected = anchor.value == totalMinutes
-                val label = formatDuration(anchor.value)
-                if (selected) {
-                    PrimaryButton(onClick = { onSelect(anchor.value, sittingsFor(anchor.value).first()) }) { Text(label) }
-                } else {
-                    QuietButton(onClick = { onSelect(anchor.value, sittingsFor(anchor.value).first()) }) { Text(label) }
-                }
-            }
+        Column(modifier = Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(1.dp)) {
+            repeat(layout.completeRows) { PreviewRow(cols = layout.cols) }
+            if (layout.lastRowCount > 0) PreviewRow(cols = layout.lastRowCount)
         }
+    }
+}
 
-        androidx.compose.foundation.layout.Spacer(Modifier.height(24.dp))
-
-        Text("Single Sitting", style = MaterialTheme.typography.titleMedium)
-        Row(
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
-        ) {
-            sittingsFor(totalMinutes).take(6).forEach { sitting ->
-                val selected = sitting == sittingMinutes
-                val label = formatDuration(sitting)
-                if (selected) {
-                    PrimaryButton(onClick = { onSelect(totalMinutes, sitting) }) { Text(label) }
-                } else {
-                    QuietButton(onClick = { onSelect(totalMinutes, sitting) }) { Text(label) }
-                }
-            }
+@Composable
+private fun ColumnScope.PreviewRow(cols: Int) {
+    Row(modifier = Modifier.fillMaxWidth().weight(1f), horizontalArrangement = Arrangement.spacedBy(1.dp)) {
+        repeat(cols) {
+            Box(modifier = Modifier.weight(1f).fillMaxHeight().background(gildedTileBrush))
         }
-
-        androidx.compose.foundation.layout.Spacer(Modifier.height(8.dp))
-        val pieces = totalMinutes / sittingMinutes
-        Text("$pieces sittings · one puzzle piece each", style = MaterialTheme.typography.bodyMedium)
-
-        androidx.compose.foundation.layout.Spacer(Modifier.height(32.dp))
-        PrimaryButton(onClick = onStart) { Text("Start") }
     }
 }
 
