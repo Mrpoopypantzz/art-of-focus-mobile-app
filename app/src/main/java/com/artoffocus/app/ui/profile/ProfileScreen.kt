@@ -32,6 +32,10 @@ import com.artoffocus.app.domain.museum.formatFocusSpan
 import com.artoffocus.app.domain.profile.displayName
 import com.artoffocus.app.ui.common.PrimaryButton
 import com.artoffocus.app.ui.common.QuietButton
+import com.artoffocus.app.ui.theme.AppSpacing
+import com.artoffocus.app.ui.theme.EyebrowStyle
+import com.artoffocus.app.ui.theme.StatValueStyle
+import com.artoffocus.app.ui.theme.screenPadding
 
 private enum class ProfileTab { STATS, ACHIEVEMENTS, SETTINGS }
 
@@ -40,7 +44,7 @@ fun ProfileScreen(viewModel: ProfileViewModel) {
     val state by viewModel.state.collectAsState()
     var tab by remember { mutableStateOf(ProfileTab.STATS) }
 
-    Column(modifier = Modifier.fillMaxWidth().padding(16.dp)) {
+    Column(modifier = Modifier.fillMaxWidth().padding(AppSpacing.screenPadding)) {
         Text(displayName(state.profile), style = MaterialTheme.typography.headlineSmall)
 
         SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp)) {
@@ -64,24 +68,36 @@ fun ProfileScreen(viewModel: ProfileViewModel) {
 @Composable
 private fun StatsTab(state: ProfileUiState) {
     val stats = state.statistics
+    val entries = buildList {
+        add("Paintings completed" to stats.count.toString())
+        add("Total focus" to formatFocusSpan(stats.focusMinutes))
+        add("Longest painting" to formatFocusSpan(stats.longestMinutes))
+        add("Average painting" to formatFocusSpan(stats.averageMinutes))
+        add("Current streak" to "${stats.currentStreak} days")
+        add("Longest streak" to "${stats.longestStreak} days")
+        stats.bestMonth?.let { add("Best month" to it) }
+    }
+
     Column {
         Text("Statistics count finished paintings only.", style = MaterialTheme.typography.bodySmall)
-        androidx.compose.foundation.layout.Spacer(Modifier.height(if (false) 0.dp else 12.dp))
-        StatRow("Paintings completed", stats.count.toString())
-        StatRow("Total focus", formatFocusSpan(stats.focusMinutes))
-        StatRow("Longest painting", formatFocusSpan(stats.longestMinutes))
-        StatRow("Average painting", formatFocusSpan(stats.averageMinutes))
-        StatRow("Current streak", "${stats.currentStreak} days")
-        StatRow("Longest streak", "${stats.longestStreak} days")
-        stats.bestMonth?.let { StatRow("Best month", it) }
+        androidx.compose.foundation.layout.Spacer(Modifier.height(AppSpacing.s4))
+        entries.chunked(2).forEach { pair ->
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(vertical = AppSpacing.s2),
+                horizontalArrangement = Arrangement.spacedBy(AppSpacing.s4),
+            ) {
+                pair.forEach { (label, value) -> StatCell(label, value, Modifier.weight(1f)) }
+                if (pair.size == 1) androidx.compose.foundation.layout.Spacer(Modifier.weight(1f))
+            }
+        }
     }
 }
 
 @Composable
-private fun StatRow(label: String, value: String) {
-    Row(modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp), horizontalArrangement = Arrangement.SpaceBetween) {
-        Text(label, style = MaterialTheme.typography.bodyMedium)
-        Text(value, style = MaterialTheme.typography.bodyMedium)
+private fun StatCell(label: String, value: String, modifier: Modifier = Modifier) {
+    Column(modifier = modifier) {
+        Text(label.uppercase(), style = EyebrowStyle)
+        Text(value, style = StatValueStyle)
     }
 }
 

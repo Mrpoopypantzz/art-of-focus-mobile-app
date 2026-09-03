@@ -32,7 +32,12 @@ import com.artoffocus.app.ui.common.TabBarItem
 import com.artoffocus.app.ui.theme.ArtOfFocusTheme
 import com.artoffocus.app.ui.theme.AppColors
 
-private enum class Tab(val label: String) { FOCUS("Focus"), MUSEUM("Museum"), PROFILE("Profile"), FRIENDS("Friends") }
+private enum class Tab(val label: String, val glyph: String) {
+    FOCUS("Focus", "◈"),
+    MUSEUM("Museum", "▤"),
+    PROFILE("Profile", "◍"),
+    FRIENDS("Friends", "◎"),
+}
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -90,7 +95,7 @@ private fun AppShell(container: AppContainer) {
         }
 
         TabBar(
-            items = Tab.entries.map { entry -> TabBarItem(entry.label, tab == entry) { tab = entry } },
+            items = Tab.entries.map { entry -> TabBarItem(entry.label, entry.glyph, tab == entry) { tab = entry } },
             modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 20.dp),
         )
     }

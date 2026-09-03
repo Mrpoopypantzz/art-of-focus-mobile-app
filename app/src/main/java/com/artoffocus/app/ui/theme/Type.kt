@@ -40,3 +40,20 @@ val AppTypography = Typography(
     bodySmall = TextStyle(fontFamily = InterFamily, fontWeight = FontWeight.W400, fontSize = 13.sp),
     labelSmall = TextStyle(fontFamily = InterFamily, fontWeight = FontWeight.W500, fontSize = 11.sp),
 )
+
+/** Uppercase, wide-tracked, dim — the web's "eyebrow" label above a stat value. */
+val EyebrowStyle = TextStyle(
+    fontFamily = InterFamily,
+    fontWeight = FontWeight.W500,
+    fontSize = 11.sp,
+    letterSpacing = 0.18.em,
+    color = AppColors.TextDim,
+)
+
+/** Bold serif — the web's stat-value emphasis, distinct from body text. */
+val StatValueStyle = TextStyle(
+    fontFamily = FrauncesFamily,
+    fontWeight = FontWeight.W600,
+    fontSize = 18.sp,
+    color = AppColors.Text,
+)

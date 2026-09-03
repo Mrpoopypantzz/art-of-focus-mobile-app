@@ -2,6 +2,7 @@ package com.artoffocus.app.ui.focus
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -27,6 +28,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -55,6 +57,8 @@ import com.artoffocus.app.ui.common.PrimaryButton
 import com.artoffocus.app.ui.common.QuietButton
 import com.artoffocus.app.ui.theme.AppColors
 import com.artoffocus.app.ui.theme.AppRadius
+import com.artoffocus.app.ui.theme.AppSpacing
+import com.artoffocus.app.ui.theme.screenPadding
 
 @Composable
 fun FocusScreen(viewModel: FocusViewModel) {
@@ -91,12 +95,15 @@ private fun SetupContent(
     onStart: () -> Unit,
 ) {
     Column(
-        modifier = Modifier.fillMaxSize().padding(24.dp),
+        modifier = Modifier.fillMaxSize().padding(AppSpacing.screenPadding),
         verticalArrangement = Arrangement.Center,
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Text("Total Focus", style = MaterialTheme.typography.titleMedium)
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+        ) {
             totalAnchors().forEach { anchor ->
                 val selected = anchor.value == totalMinutes
                 val label = formatDuration(anchor.value)
@@ -111,7 +118,10 @@ private fun SetupContent(
         androidx.compose.foundation.layout.Spacer(Modifier.height(24.dp))
 
         Text("Single Sitting", style = MaterialTheme.typography.titleMedium)
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+        ) {
             sittingsFor(totalMinutes).take(6).forEach { sitting ->
                 val selected = sitting == sittingMinutes
                 val label = formatDuration(sitting)
@@ -137,7 +147,11 @@ private fun RunningContent(state: FocusUiState, viewModel: FocusViewModel) {
     val progress = sessionProgress(state.session, state.setup.sittingMinutes, state.pieces, state.now)
     val revealed = revealedCount(state.session, state.pieces)
 
-    Column(modifier = Modifier.fillMaxSize().padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+    Column(
+        modifier = Modifier.fillMaxSize().padding(AppSpacing.screenPadding),
+        verticalArrangement = Arrangement.Center,
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
         PuzzleMosaic(
             painting = state.painting,
             pieces = state.pieces,
@@ -213,7 +227,7 @@ private fun androidx.compose.foundation.layout.ColumnScope.MosaicRow(cols: Int, 
                 modifier = Modifier
                     .weight(1f)
                     .fillMaxHeight()
-                    .then(if (isRevealed) Modifier else Modifier.background(gildedTileBrush).border(1.dp, AppColors.Ink.copy(alpha = 0.12f))),
+                    .then(if (isRevealed) Modifier else Modifier.background(gildedTileBrush)),
             )
         }
     }

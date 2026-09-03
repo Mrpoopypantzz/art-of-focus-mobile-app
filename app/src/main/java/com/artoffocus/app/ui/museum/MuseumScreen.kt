@@ -28,12 +28,14 @@ import androidx.compose.ui.unit.dp
 import com.artoffocus.app.domain.museum.CompletedPainting
 import com.artoffocus.app.domain.museum.formatFocusSpan
 import com.artoffocus.app.ui.common.PaintingArt
+import com.artoffocus.app.ui.theme.AppSpacing
+import com.artoffocus.app.ui.theme.screenPadding
 
 @Composable
 fun MuseumScreen(viewModel: MuseumViewModel) {
     val state by viewModel.state.collectAsState()
 
-    Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
+    Column(modifier = Modifier.fillMaxSize().padding(AppSpacing.screenPadding)) {
         SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
             SegmentedButton(
                 selected = state.view == MuseumView.WALL,

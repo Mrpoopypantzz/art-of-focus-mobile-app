@@ -20,7 +20,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.artoffocus.app.ui.theme.AppColors
 
-data class TabBarItem(val label: String, val selected: Boolean, val onClick: () -> Unit)
+data class TabBarItem(val label: String, val glyph: String, val selected: Boolean, val onClick: () -> Unit)
 
 /**
  * A floating ink-filled pill, bottom-center — not a full-width Material3 NavigationBar. The
@@ -50,9 +50,12 @@ fun TabBar(items: List<TabBarItem>, modifier: Modifier = Modifier) {
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = androidx.compose.foundation.layout.Arrangement.Center,
             ) {
+                val itemColor = if (item.selected) AppColors.OnInk else AppColors.OnInk.copy(alpha = 0.55f)
+                Text(text = item.glyph, color = itemColor, fontSize = 15.sp, textAlign = TextAlign.Center)
+                androidx.compose.foundation.layout.Spacer(Modifier.height(2.dp))
                 Text(
                     text = item.label,
-                    color = if (item.selected) AppColors.OnInk else AppColors.OnInk.copy(alpha = 0.55f),
+                    color = itemColor,
                     fontSize = 10.sp,
                     textAlign = TextAlign.Center,
                     style = MaterialTheme.typography.labelSmall,
