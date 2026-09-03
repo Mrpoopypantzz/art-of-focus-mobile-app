@@ -57,6 +57,7 @@ import com.artoffocus.app.domain.focus.sessionProgress
 import com.artoffocus.app.domain.focus.sittingAnchors
 import com.artoffocus.app.domain.focus.sittingsFor
 import com.artoffocus.app.domain.focus.totalAnchors
+import com.artoffocus.app.ui.common.AppSheet
 import com.artoffocus.app.ui.common.DangerButton
 import com.artoffocus.app.ui.common.PaintingArt
 import com.artoffocus.app.ui.common.PrimaryButton
@@ -65,6 +66,7 @@ import com.artoffocus.app.ui.common.WheelPicker
 import com.artoffocus.app.ui.theme.AppColors
 import com.artoffocus.app.ui.theme.AppRadius
 import com.artoffocus.app.ui.theme.AppSpacing
+import com.artoffocus.app.ui.theme.EyebrowStyle
 import com.artoffocus.app.ui.theme.screenPadding
 import kotlin.math.abs
 
@@ -75,14 +77,20 @@ fun FocusScreen(viewModel: FocusViewModel) {
     Box(modifier = Modifier.fillMaxSize()) {
         if (state.isLoading) return@Box
 
-        when (state.session.status) {
-            SessionStatus.IDLE -> SetupContent(
-                totalMinutes = state.setup.totalMinutes,
-                sittingMinutes = state.setup.sittingMinutes,
-                onSelect = viewModel::selectSetup,
-                onStart = viewModel::startFocusSession,
-            )
-            else -> RunningContent(state = state, viewModel = viewModel)
+        Column(modifier = Modifier.fillMaxSize()) {
+            StudioHeader()
+
+            Box(modifier = Modifier.fillMaxSize()) {
+                when (state.session.status) {
+                    SessionStatus.IDLE -> SetupContent(
+                        totalMinutes = state.setup.totalMinutes,
+                        sittingMinutes = state.setup.sittingMinutes,
+                        onSelect = viewModel::selectSetup,
+                        onStart = viewModel::startFocusSession,
+                    )
+                    else -> RunningContent(state = state, viewModel = viewModel)
+                }
+            }
         }
 
         state.awayGapMs?.let { gap ->
@@ -92,6 +100,19 @@ fun FocusScreen(viewModel: FocusViewModel) {
         state.justCompletedPainting?.let {
             PaintingCompleteDialog(onDismiss = viewModel::acknowledgePaintingCompletion)
         }
+    }
+}
+
+/** Persistent chrome — rendered above every session state, not gated on it (matches FocusScreen.tsx:289-292). */
+@Composable
+private fun StudioHeader() {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = AppSpacing.s5, vertical = AppSpacing.s4),
+    ) {
+        Text("THE STUDIO", style = EyebrowStyle)
+        Text("Art of Focus", style = MaterialTheme.typography.displayMedium)
     }
 }
 
@@ -372,16 +393,40 @@ private fun PausedControls(viewModel: FocusViewModel) {
 
 @Composable
 private fun CancelButton(cancelCountdown: Int?, viewModel: FocusViewModel) {
-    if (cancelCountdown == null) {
-        TextButton(onClick = viewModel::requestCancel) { Text("Cancel") }
-    } else {
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Text("Cancelling in $cancelCountdown…", style = MaterialTheme.typography.bodySmall)
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                TextButton(onClick = viewModel::abortCancelRequest) { Text("Keep going") }
-                DangerButton(onClick = viewModel::confirmCancel, enabled = cancelCountdown == 0) { Text("Confirm cancel") }
+    TextButton(onClick = viewModel::requestCancel) { Text("Cancel") }
+
+    if (cancelCountdown != null) {
+        CancelSheet(cancelCountdown = cancelCountdown, viewModel = viewModel)
+    }
+}
+
+/** "Leave this sitting?" — mirrors the web's shared Sheet.tsx modal (SessionControls.tsx). */
+@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
+@Composable
+private fun CancelSheet(cancelCountdown: Int, viewModel: FocusViewModel) {
+    AppSheet(
+        onDismissRequest = viewModel::abortCancelRequest,
+        title = "Leave this sitting?",
+        subtitle = "The time you have focused so far will not be saved.",
+        footer = {
+            Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.s2)) {
+                PrimaryButton(onClick = viewModel::abortCancelRequest, modifier = Modifier.fillMaxWidth()) {
+                    Text("Keep focusing")
+                }
+                DangerButton(
+                    onClick = viewModel::confirmCancel,
+                    enabled = cancelCountdown == 0,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Text(if (cancelCountdown > 0) "Cancel in ${cancelCountdown}s" else "Cancel sitting")
+                }
             }
-        }
+        },
+    ) {
+        Text(
+            "Starting is one tap; leaving takes a moment. Give yourself the five seconds — the urge to stop often passes.",
+            style = MaterialTheme.typography.bodySmall,
+        )
     }
 }
 
