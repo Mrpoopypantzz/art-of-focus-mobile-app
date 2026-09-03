@@ -2,8 +2,10 @@ package com.artoffocus.app
 
 import android.content.Context
 import com.artoffocus.app.data.local.AppDatabase
+import com.artoffocus.app.data.remote.createAppSupabaseClient
 import com.artoffocus.app.data.repository.AccountRepository
 import com.artoffocus.app.data.repository.ArtworkRepository
+import com.artoffocus.app.data.repository.AuthRepository
 import com.artoffocus.app.data.repository.FocusSetupRepository
 import com.artoffocus.app.data.repository.MuseumRepository
 import com.artoffocus.app.data.repository.NotificationPrefsRepository
@@ -23,4 +25,7 @@ class AppContainer(context: Context) {
     val onboardingRepository by lazy { OnboardingRepository(appContext) }
     val notificationPrefsRepository by lazy { NotificationPrefsRepository(appContext) }
     val accountRepository by lazy { AccountRepository(appContext) }
+
+    private val supabaseClient by lazy { createAppSupabaseClient() }
+    val authRepository by lazy { AuthRepository(supabaseClient, accountRepository) }
 }

@@ -7,6 +7,9 @@ import com.artoffocus.app.data.local.appDataStore
 import com.artoffocus.app.domain.account.AccountStatus
 import com.artoffocus.app.domain.account.SyncStatus
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
+
+data class AccountState(val status: AccountStatus, val email: String?)
 
 /**
  * I7 — a backend never sits in the timer's path; sync only happens on sign-in and after
@@ -22,6 +25,19 @@ class AccountRepository(private val context: Context) {
 
     suspend fun setStatus(status: AccountStatus) {
         context.appDataStore.edit { prefs -> prefs[PrefKeys.ACCOUNT_STATUS] = status.name }
+    }
+
+    suspend fun email(): String? = context.appDataStore.data.first()[PrefKeys.ACCOUNT_EMAIL]
+
+    suspend fun setEmail(email: String) {
+        context.appDataStore.edit { prefs -> prefs[PrefKeys.ACCOUNT_EMAIL] = email }
+    }
+
+    /** Reactive view for the Settings screen — updates live as sign-in completes. */
+    fun observe() = context.appDataStore.data.map { prefs ->
+        val status = prefs[PrefKeys.ACCOUNT_STATUS]?.let { runCatching { AccountStatus.valueOf(it) }.getOrNull() }
+            ?: AccountStatus.SIGNED_OUT
+        AccountState(status, prefs[PrefKeys.ACCOUNT_EMAIL])
     }
 
     suspend fun lastSyncedAt(): Long? = context.appDataStore.data.first()[PrefKeys.LAST_SYNCED_AT]

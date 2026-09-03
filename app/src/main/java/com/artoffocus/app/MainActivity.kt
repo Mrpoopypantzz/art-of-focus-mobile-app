@@ -67,7 +67,13 @@ private fun AppShell(container: AppContainer) {
     )
     val museumViewModel: MuseumViewModel = viewModel(factory = MuseumViewModel.Factory(container.museumRepository))
     val profileViewModel: ProfileViewModel = viewModel(
-        factory = ProfileViewModel.Factory(container.profileRepository, container.focusSetupRepository, container.museumRepository),
+        factory = ProfileViewModel.Factory(
+            container.profileRepository,
+            container.focusSetupRepository,
+            container.museumRepository,
+            container.accountRepository,
+            container.authRepository,
+        ),
     )
 
     // I7 amendment — record when the app leaves the foreground, and check the away gap on return.

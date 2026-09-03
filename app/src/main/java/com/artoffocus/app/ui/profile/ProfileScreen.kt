@@ -22,7 +22,9 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import com.artoffocus.app.domain.account.AccountStatus
 import com.artoffocus.app.domain.achievements.Achievement
 import com.artoffocus.app.domain.achievements.describeEarned
 import com.artoffocus.app.domain.achievements.nextAchievement
@@ -30,6 +32,7 @@ import com.artoffocus.app.domain.achievements.valueFor
 import com.artoffocus.app.domain.focus.FocusLevel
 import com.artoffocus.app.domain.museum.formatFocusSpan
 import com.artoffocus.app.domain.profile.displayName
+import com.artoffocus.app.ui.common.DangerButton
 import com.artoffocus.app.ui.common.PrimaryButton
 import com.artoffocus.app.ui.common.QuietButton
 import com.artoffocus.app.ui.theme.AppSpacing
@@ -155,5 +158,44 @@ private fun SettingsTab(state: ProfileUiState, viewModel: ProfileViewModel) {
                 }
             }
         }
+
+        androidx.compose.foundation.layout.Spacer(Modifier.height(24.dp))
+        AccountSection(state, viewModel)
+    }
+}
+
+/** F10.6 — account auth + clear local cache, reachable with no account. Google Sign-In only. */
+@Composable
+private fun AccountSection(state: ProfileUiState, viewModel: ProfileViewModel) {
+    val context = LocalContext.current
+
+    Text("Account", style = MaterialTheme.typography.titleMedium)
+    androidx.compose.foundation.layout.Spacer(Modifier.height(8.dp))
+
+    when (state.account.status) {
+        AccountStatus.SIGNED_IN -> {
+            Text(
+                state.account.email ?: "Signed in",
+                style = MaterialTheme.typography.bodyMedium,
+            )
+            androidx.compose.foundation.layout.Spacer(Modifier.height(8.dp))
+            DangerButton(onClick = viewModel::signOut) { Text("Sign out & clear local data") }
+        }
+        else -> {
+            Text(
+                "Sign in to sync your paintings and connect with friends. The app works fully offline without an account.",
+                style = MaterialTheme.typography.bodySmall,
+            )
+            androidx.compose.foundation.layout.Spacer(Modifier.height(8.dp))
+            PrimaryButton(
+                onClick = { viewModel.signInWithGoogle(context) },
+                enabled = !state.authInProgress,
+            ) { Text(if (state.authInProgress) "Signing in…" else "Sign in with Google") }
+        }
+    }
+
+    state.authError?.let { error ->
+        androidx.compose.foundation.layout.Spacer(Modifier.height(8.dp))
+        Text(error, style = MaterialTheme.typography.bodySmall)
     }
 }
