@@ -35,6 +35,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import com.artoffocus.app.domain.focus.FocusLevel
 import com.artoffocus.app.domain.focus.Painting
@@ -170,8 +172,13 @@ private fun IdleContent(state: FocusUiState, viewModel: FocusViewModel, onOpenSe
         androidx.compose.foundation.layout.Spacer(Modifier.height(AppSpacing.s5))
 
         Text(
-            "${formatDuration(state.setup.totalMinutes)} total · ${formatDuration(state.setup.sittingMinutes)} per sitting",
-            style = MaterialTheme.typography.bodyMedium,
+            buildAnnotatedString {
+                withStyle(StatValueStyle.toSpanStyle()) { append(formatDuration(state.setup.totalMinutes)) }
+                append(" total · ")
+                withStyle(StatValueStyle.toSpanStyle()) { append(formatDuration(state.setup.sittingMinutes)) }
+                append(" per sitting")
+            },
+            style = MaterialTheme.typography.bodyMedium.copy(color = AppColors.TextDim),
         )
         androidx.compose.foundation.layout.Spacer(Modifier.height(AppSpacing.s1))
         Text(

@@ -103,6 +103,8 @@ private fun StatsTab(state: ProfileUiState) {
     )
 
     Column {
+        Text("STATISTICS", style = EyebrowStyle)
+        androidx.compose.foundation.layout.Spacer(Modifier.height(AppSpacing.s3))
         entries.chunked(2).forEach { pair ->
             Row(
                 modifier = Modifier.fillMaxWidth().padding(vertical = AppSpacing.s2),
@@ -161,6 +163,8 @@ private fun SettingsTab(state: ProfileUiState, viewModel: ProfileViewModel) {
     var goal by remember(state.profile.goal) { mutableStateOf(state.profile.goal) }
 
     Column {
+        Text("IDENTITY", style = EyebrowStyle)
+        androidx.compose.foundation.layout.Spacer(Modifier.height(AppSpacing.s3))
         OutlinedTextField(value = username, onValueChange = { username = it }, label = { Text("Username") }, modifier = Modifier.fillMaxWidth())
         androidx.compose.foundation.layout.Spacer(Modifier.height(8.dp))
         OutlinedTextField(value = goal, onValueChange = { goal = it }, label = { Text("Long-term goal") }, modifier = Modifier.fillMaxWidth())
@@ -168,7 +172,8 @@ private fun SettingsTab(state: ProfileUiState, viewModel: ProfileViewModel) {
         PrimaryButton(onClick = { viewModel.saveIdentity(username, goal) }) { Text("Save") }
 
         androidx.compose.foundation.layout.Spacer(Modifier.height(24.dp))
-        Text("Focus level", style = MaterialTheme.typography.titleMedium)
+        Text("FOCUS LEVEL", style = EyebrowStyle)
+        androidx.compose.foundation.layout.Spacer(Modifier.height(AppSpacing.s2))
         Text(
             "Sets defaults only — never limits which durations you can pick, even mid-painting.",
             style = MaterialTheme.typography.bodySmall,
@@ -211,7 +216,7 @@ private fun FocusLevelCard(level: FocusLevel, selected: Boolean, modifier: Modif
 private fun AccountSection(state: ProfileUiState, viewModel: ProfileViewModel) {
     val context = LocalContext.current
 
-    Text("Account", style = MaterialTheme.typography.titleMedium)
+    Text("ACCOUNT", style = EyebrowStyle)
     androidx.compose.foundation.layout.Spacer(Modifier.height(8.dp))
 
     when (state.account.status) {

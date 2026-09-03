@@ -34,7 +34,7 @@ val InterFamily: FontFamily = FontFamily(
 val AppTypography = Typography(
     displayMedium = TextStyle(fontFamily = FrauncesFamily, fontWeight = FontWeight.W600, fontSize = 32.sp, letterSpacing = (-0.02).em),
     headlineSmall = TextStyle(fontFamily = FrauncesFamily, fontWeight = FontWeight.W600, fontSize = 24.sp, letterSpacing = (-0.02).em),
-    titleMedium = TextStyle(fontFamily = InterFamily, fontWeight = FontWeight.W600, fontSize = 18.sp),
+    titleMedium = TextStyle(fontFamily = FrauncesFamily, fontWeight = FontWeight.W600, fontSize = 18.sp, letterSpacing = (-0.02).em),
     bodyLarge = TextStyle(fontFamily = InterFamily, fontWeight = FontWeight.W500, fontSize = 15.sp),
     bodyMedium = TextStyle(fontFamily = InterFamily, fontWeight = FontWeight.W400, fontSize = 15.sp),
     bodySmall = TextStyle(fontFamily = InterFamily, fontWeight = FontWeight.W400, fontSize = 13.sp),
@@ -44,7 +44,7 @@ val AppTypography = Typography(
 /** Uppercase, wide-tracked, dim — the web's "eyebrow" label above a stat value. */
 val EyebrowStyle = TextStyle(
     fontFamily = InterFamily,
-    fontWeight = FontWeight.W500,
+    fontWeight = FontWeight.W600,
     fontSize = 11.sp,
     letterSpacing = 0.18.em,
     color = AppColors.TextDim,
