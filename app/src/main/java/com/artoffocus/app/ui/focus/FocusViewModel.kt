@@ -48,6 +48,7 @@ data class FocusUiState(
     val now: Long = System.currentTimeMillis(),
     val awayGapMs: Long? = null,
     val cancelCountdown: Int? = null,
+    val remainingAutoContinueMs: Long? = null,
     val justCompletedPainting: CompletedPainting? = null,
 )
 
@@ -68,6 +69,7 @@ class FocusViewModel(
 
     private var cancelCountdownJob: kotlinx.coroutines.Job? = null
     private var autoContinueJob: kotlinx.coroutines.Job? = null
+    private var autoContinueDeadline: Long? = null
 
     init {
         viewModelScope.launch {
@@ -97,7 +99,8 @@ class FocusViewModel(
             while (true) {
                 delay(250)
                 val now = System.currentTimeMillis()
-                _state.update { it.copy(now = now) }
+                val remaining = autoContinueDeadline?.let { (it - now).coerceAtLeast(0) }
+                _state.update { it.copy(now = now, remainingAutoContinueMs = remaining) }
                 checkForCompletions(now)
             }
         }
@@ -137,6 +140,8 @@ class FocusViewModel(
     /** I10 — a visible 60s countdown; if it expires with no choice, the next sitting begins. */
     private fun startAutoContinueCountdown() {
         autoContinueJob?.cancel()
+        autoContinueDeadline = System.currentTimeMillis() + AUTO_CONTINUE_MS
+        _state.update { it.copy(remainingAutoContinueMs = AUTO_CONTINUE_MS) }
         autoContinueJob = viewModelScope.launch {
             delay(AUTO_CONTINUE_MS)
             val current = _state.value
@@ -223,17 +228,30 @@ class FocusViewModel(
         _state.update { it.copy(cancelCountdown = null) }
     }
 
-    /** Only takes effect once the visible countdown has reached zero. */
+    /**
+     * Only takes effect once the visible countdown has reached zero. Cancels this sitting only —
+     * the active painting and any pieces already earned survive (matches web's cancelSession(),
+     * which resets only session state). Distinct from [abandonPainting], which discards the
+     * painting entirely.
+     */
     fun confirmCancel() {
         if (_state.value.cancelCountdown != 0) return
         cancelCountdownJob?.cancel()
         NotificationScheduler.cancelRestEnd(appContext)
         viewModelScope.launch {
-            // I12 — abandoning mid-painting: active slot released, nothing written to the Museum.
+            sessionRepository.clear()
+            _state.update { it.copy(session = cancelSession(), cancelCountdown = null) }
+        }
+    }
+
+    /** Discards the active painting entirely — reachable only from the idle, locked-pair state. */
+    fun abandonPainting() {
+        viewModelScope.launch {
+            NotificationScheduler.cancelRestEnd(appContext)
             artworkRepository.clearActive()
             sessionRepository.clear()
             _state.update {
-                it.copy(session = cancelSession(), painting = null, activePaintingStartedAt = 0L, cancelCountdown = null)
+                it.copy(session = cancelSession(), painting = null, activePaintingStartedAt = 0L)
             }
         }
     }
@@ -241,6 +259,9 @@ class FocusViewModel(
     // --- I11: rest completion never auto-starts the next sitting ---
 
     fun chooseRest(minutes: Int) {
+        autoContinueJob?.cancel()
+        autoContinueDeadline = null
+        _state.update { it.copy(remainingAutoContinueMs = null) }
         val now = System.currentTimeMillis()
         val resting = startRest(_state.value.session, minutes, now)
         persistSession(resting)
@@ -250,6 +271,8 @@ class FocusViewModel(
 
     fun chooseContinue() {
         autoContinueJob?.cancel()
+        autoContinueDeadline = null
+        _state.update { it.copy(remainingAutoContinueMs = null) }
         val now = System.currentTimeMillis()
         val current = _state.value.session
         val wasResting = current.status == SessionStatus.RESTING || current.status == SessionStatus.REST_COMPLETE
