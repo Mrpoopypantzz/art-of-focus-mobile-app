@@ -12,7 +12,29 @@ import com.artoffocus.app.domain.profile.Statistics
 
 enum class AchievementKind { STREAK, HOURS, PAINTINGS }
 
-data class Achievement(val kind: AchievementKind, val threshold: Int, val title: String)
+data class Achievement(val kind: AchievementKind, val threshold: Int, val title: String) {
+
+    /** Stable key for list rendering, mirroring the web ids ("streak-3", "hours-10"). */
+    val id: String
+        get() = when (kind) {
+            AchievementKind.STREAK -> "streak-$threshold"
+            AchievementKind.HOURS -> "hours-$threshold"
+            AchievementKind.PAINTINGS -> "paintings-$threshold"
+        }
+
+    /**
+     * Derived from kind and threshold exactly as the web app derives it, rather than typed
+     * out fourteen times — the two wordings cannot drift apart if neither is hand-written.
+     */
+    val description: String
+        get() = when (kind) {
+            AchievementKind.STREAK -> "Finish a painting on $threshold consecutive days"
+            AchievementKind.HOURS -> "$threshold hour${plural(threshold)} of focus"
+            AchievementKind.PAINTINGS -> "Complete $threshold painting${plural(threshold)}"
+        }
+}
+
+private fun plural(n: Int): String = if (n == 1) "" else "s"
 
 val ACHIEVEMENTS: List<Achievement> = listOf(
     Achievement(AchievementKind.STREAK, 3, "Three Days Running"),
@@ -48,5 +70,9 @@ fun unearnedAchievements(stats: Statistics): List<Achievement> = ACHIEVEMENTS.fi
 /** Nearest by proportion (highest completion fraction among the unearned), not absolute gap. */
 fun nextAchievement(stats: Statistics): Achievement? =
     unearnedAchievements(stats).maxByOrNull { (valueFor(stats, it.kind).toDouble() / it.threshold).coerceAtMost(1.0) }
+
+/** 0.0–1.0 progress toward an achievement — drives the "next up" bar the web app shows. */
+fun progressToward(stats: Statistics, achievement: Achievement): Float =
+    (valueFor(stats, achievement.kind).toFloat() / achievement.threshold).coerceIn(0f, 1f)
 
 fun describeEarned(stats: Statistics): String = "${earnedAchievements(stats).size} of ${ACHIEVEMENTS.size} earned"

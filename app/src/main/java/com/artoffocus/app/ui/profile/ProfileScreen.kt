@@ -5,6 +5,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -12,7 +13,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.Card
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
@@ -31,6 +31,7 @@ import com.artoffocus.app.domain.account.AccountStatus
 import com.artoffocus.app.domain.achievements.Achievement
 import com.artoffocus.app.domain.achievements.describeEarned
 import com.artoffocus.app.domain.achievements.nextAchievement
+import com.artoffocus.app.domain.achievements.progressToward
 import com.artoffocus.app.domain.achievements.valueFor
 import com.artoffocus.app.domain.focus.DEFAULT_TOTAL_MINUTES
 import com.artoffocus.app.domain.focus.FocusLevel
@@ -131,29 +132,104 @@ private fun StatCell(label: String, value: String, modifier: Modifier = Modifier
     }
 }
 
+/**
+ * Mirrors the web AchievementsSection: a legend, the earned count, a "next up" block with a
+ * real progress bar, then every achievement with its progress and description. The whole tab
+ * scrolls as one list so the last row clears the floating tab bar.
+ */
 @Composable
 private fun AchievementsTab(state: ProfileUiState) {
-    Column {
-        Text(describeEarned(state.statistics), style = MaterialTheme.typography.bodyMedium)
-        nextAchievement(state.statistics)?.let {
-            Text(
-                "Next: ${it.title} (${valueFor(state.statistics, it.kind)}/${it.threshold})",
-                style = MaterialTheme.typography.bodySmall,
+    val stats = state.statistics
+    val next = nextAchievement(stats)
+
+    LazyColumn(contentPadding = PaddingValues(bottom = 96.dp)) {
+        item {
+            Text("ACHIEVEMENTS", style = EyebrowStyle)
+            androidx.compose.foundation.layout.Spacer(Modifier.height(AppSpacing.s3))
+            Text(describeEarned(stats), style = MaterialTheme.typography.bodyMedium)
+        }
+
+        next?.let { achievement ->
+            item {
+                androidx.compose.foundation.layout.Spacer(Modifier.height(AppSpacing.s4))
+                NextAchievement(
+                    achievement = achievement,
+                    current = valueFor(stats, achievement.kind),
+                    fraction = progressToward(stats, achievement),
+                )
+            }
+        }
+
+        item { androidx.compose.foundation.layout.Spacer(Modifier.height(AppSpacing.s5)) }
+
+        items(state.achievements, key = { it.id }) { achievement ->
+            AchievementRow(
+                achievement = achievement,
+                earned = state.earnedAchievements.contains(achievement),
+                current = valueFor(stats, achievement.kind),
             )
         }
-        LazyColumn(modifier = Modifier.padding(top = 12.dp)) {
-            items(state.achievements) { achievement -> AchievementRow(achievement, state.earnedAchievements.contains(achievement)) }
+
+        item {
+            androidx.compose.foundation.layout.Spacer(Modifier.height(AppSpacing.s3))
+            Text("Counts finished paintings only.", style = MaterialTheme.typography.bodySmall)
         }
     }
 }
 
+/** The nearest-by-proportion achievement, with the progress bar the web app shows. */
 @Composable
-private fun AchievementRow(achievement: Achievement, earned: Boolean) {
-    Card(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
-        Row(modifier = Modifier.padding(12.dp), horizontalArrangement = Arrangement.SpaceBetween) {
-            Text(achievement.title, style = MaterialTheme.typography.bodyLarge)
-            Text(if (earned) "Earned" else "Locked", style = MaterialTheme.typography.bodySmall)
+private fun NextAchievement(achievement: Achievement, current: Int, fraction: Float) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(AppRadius.md))
+            .background(AppColors.SurfaceSunken)
+            .padding(AppSpacing.s4),
+    ) {
+        Text("Next: ${achievement.title}", style = MaterialTheme.typography.bodyLarge)
+        androidx.compose.foundation.layout.Spacer(Modifier.height(AppSpacing.s2))
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(6.dp)
+                .clip(AppRadius.pill)
+                .background(AppColors.Surface),
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth(fraction)
+                    .height(6.dp)
+                    .clip(AppRadius.pill)
+                    .background(AppColors.Ink),
+            )
         }
+        androidx.compose.foundation.layout.Spacer(Modifier.height(AppSpacing.s2))
+        Text(
+            "$current of ${achievement.threshold} · ${achievement.description}",
+            color = AppColors.TextDim,
+            style = MaterialTheme.typography.bodySmall,
+        )
+    }
+}
+
+@Composable
+private fun AchievementRow(achievement: Achievement, earned: Boolean, current: Int) {
+    Column(modifier = Modifier.fillMaxWidth().padding(vertical = AppSpacing.s2)) {
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            Text(
+                achievement.title,
+                color = if (earned) AppColors.Text else AppColors.TextDim,
+                style = MaterialTheme.typography.bodyLarge,
+            )
+            if (earned) Text("Earned", style = EyebrowStyle)
+        }
+        Text(
+            // Earned achievements drop the counter: the number stops being news once it is met.
+            if (earned) achievement.description else "$current of ${achievement.threshold} · ${achievement.description}",
+            color = AppColors.TextDim,
+            style = MaterialTheme.typography.bodySmall,
+        )
     }
 }
 
