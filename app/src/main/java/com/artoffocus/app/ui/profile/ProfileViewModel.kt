@@ -45,7 +45,7 @@ data class ProfileUiState(
 class ProfileViewModel(
     private val profileRepository: ProfileRepository,
     private val focusSetupRepository: FocusSetupRepository,
-    museumRepository: MuseumRepository,
+    private val museumRepository: MuseumRepository,
     private val accountRepository: AccountRepository,
     private val authRepository: AuthRepository,
     private val notificationPrefsRepository: NotificationPrefsRepository,
@@ -130,9 +130,18 @@ class ProfileViewModel(
         }
     }
 
-    /** F10.6 — "clear local cache", reachable with no account. */
+    /** F10.6 — signing out only ends the session; it deliberately leaves the Museum alone. */
     fun signOut() {
         viewModelScope.launch { authRepository.signOut() }
+    }
+
+    /**
+     * F10.6 — the separate, always-reachable destructive action. Someone with no account is
+     * exactly the person whose device holds the only copy, so this must not hide behind
+     * sign-in. The confirmation sheet that gates it states what is about to be lost.
+     */
+    fun clearLocalData() {
+        viewModelScope.launch { museumRepository.clearAll() }
     }
 
     fun dismissAuthError() {

@@ -25,6 +25,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Switch
@@ -43,6 +44,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.artoffocus.app.domain.account.AccountStatus
+import com.artoffocus.app.domain.account.hasUnsyncedWork
 import com.artoffocus.app.domain.achievements.Achievement
 import com.artoffocus.app.domain.achievements.describeEarned
 import com.artoffocus.app.domain.achievements.nextAchievement
@@ -53,8 +55,10 @@ import com.artoffocus.app.domain.focus.FocusLevel
 import com.artoffocus.app.domain.focus.formatDuration
 import com.artoffocus.app.domain.museum.formatFocusSpan
 import com.artoffocus.app.domain.notifications.NotificationKind
+import com.artoffocus.app.ui.common.AppSheet
 import com.artoffocus.app.ui.common.DangerButton
 import com.artoffocus.app.ui.common.PrimaryButton
+import com.artoffocus.app.ui.common.QuietButton
 import com.artoffocus.app.ui.theme.AppColors
 import com.artoffocus.app.ui.theme.AppRadius
 import com.artoffocus.app.ui.theme.AppSpacing
@@ -413,14 +417,16 @@ private fun AccountSection(state: ProfileUiState, viewModel: ProfileViewModel) {
     Text("ACCOUNT", style = EyebrowStyle)
     androidx.compose.foundation.layout.Spacer(Modifier.height(8.dp))
 
+    var confirmClear by remember { mutableStateOf(false) }
+
     when (state.account.status) {
         AccountStatus.SIGNED_IN -> {
             Text(
-                state.account.email ?: "Signed in",
+                "Signed in as ${state.account.email ?: "your account"}",
                 style = MaterialTheme.typography.bodyMedium,
             )
             androidx.compose.foundation.layout.Spacer(Modifier.height(8.dp))
-            DangerButton(onClick = viewModel::signOut) { Text("Sign out & clear local data") }
+            QuietButton(onClick = viewModel::signOut) { Text("Sign out") }
         }
         else -> {
             Text(
@@ -438,5 +444,76 @@ private fun AccountSection(state: ProfileUiState, viewModel: ProfileViewModel) {
     state.authError?.let { error ->
         androidx.compose.foundation.layout.Spacer(Modifier.height(8.dp))
         Text(error, style = MaterialTheme.typography.bodySmall)
+    }
+
+    // Deliberately outside the when: clearing must be reachable with no account, because the
+    // person with no account is the one whose device holds the only copy.
+    androidx.compose.foundation.layout.Spacer(Modifier.height(AppSpacing.s2))
+    QuietButton(onClick = { confirmClear = true }) { Text("Clear local data") }
+
+    if (confirmClear) {
+        ClearLocalDataSheet(
+            paintingCount = state.statistics.count,
+            atRisk = hasUnsyncedWork(
+                paintingCount = state.statistics.count,
+                lastSyncedAt = state.account.lastSyncedAt,
+                syncStatus = state.account.syncStatus,
+            ),
+            onDismiss = { confirmClear = false },
+            onConfirm = {
+                confirmClear = false
+                viewModel.clearLocalData()
+            },
+        )
+    }
+}
+
+/**
+ * I12 makes this sheet's job specific: state exactly what is about to be destroyed and
+ * whether a copy survives elsewhere, rather than asking a vague "are you sure?".
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ClearLocalDataSheet(
+    paintingCount: Int,
+    atRisk: Boolean,
+    onDismiss: () -> Unit,
+    onConfirm: () -> Unit,
+) {
+    val subtitle = when {
+        paintingCount == 0 -> "Your Museum is empty."
+        atRisk -> "$paintingCount painting${if (paintingCount == 1) "" else "s"} in your Museum " +
+            "${if (paintingCount == 1) "has" else "have"} not been saved to an account."
+        else -> "Your Museum is saved to your account."
+    }
+    val warning = when {
+        paintingCount == 0 -> "There are no finished paintings to lose."
+        // Web hard-codes the plural here; singular reads wrong on a first painting, which is
+        // exactly when someone is most likely to be clearing by mistake.
+        atRisk -> "This permanently deletes $paintingCount finished painting" +
+            "${if (paintingCount == 1) "" else "s"} from this device. " +
+            "${if (paintingCount == 1) "It cannot" else "They cannot"} be recovered. " +
+            "Sign in first if you want to keep ${if (paintingCount == 1) "it" else "them"} — " +
+            "your paintings sync automatically once you do."
+        else -> "This removes the copy on this device. Your paintings remain in your account and " +
+            "return when you sign in again."
+    }
+
+    AppSheet(
+        onDismissRequest = onDismiss,
+        title = "Clear local data?",
+        subtitle = subtitle,
+        footer = {
+            Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.s2)) {
+                PrimaryButton(onClick = onDismiss, modifier = Modifier.fillMaxWidth()) {
+                    Text("Keep my data")
+                }
+                DangerButton(onClick = onConfirm, modifier = Modifier.fillMaxWidth()) {
+                    Text("Clear anyway")
+                }
+            }
+        },
+    ) {
+        Text(warning, style = MaterialTheme.typography.bodySmall)
     }
 }

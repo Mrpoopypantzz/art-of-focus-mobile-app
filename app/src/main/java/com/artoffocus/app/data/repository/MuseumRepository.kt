@@ -38,6 +38,9 @@ class MuseumRepository(private val dao: PaintingDao) {
 
     suspend fun getAll(): List<CompletedPainting> = dao.getAll().mapNotNull { it.toDomainOrNull() }
 
+    /** Explicit user-initiated wipe only — see PaintingDao.deleteAll. */
+    suspend fun clearAll() = dao.deleteAll()
+
     /** localId alongside the record — the sync layer needs it to mark rows pushed. */
     suspend fun allWithLocalIds(): List<Pair<Long, CompletedPainting>> =
         dao.getAll().mapNotNull { entity -> entity.toDomainOrNull()?.let { entity.localId to it } }

@@ -24,6 +24,17 @@ interface PaintingDao {
     @Query("SELECT * FROM paintings WHERE syncedAt IS NULL")
     suspend fun getUnsynced(): List<PaintingEntity>
 
+    /**
+     * The ONE sanctioned delete, and it is not the app deleting anything: I12 forbids the
+     * app destroying a finished painting on its own, silently, or as a side effect. This is
+     * the user explicitly wiping their own device copy from Profile settings, behind a sheet
+     * that names how many paintings go and whether a cloud copy exists -- exactly what the
+     * web app offers. Nothing else may call it, and no code path may reach it without that
+     * confirmation.
+     */
+    @Query("DELETE FROM paintings")
+    suspend fun deleteAll()
+
     // Touches only local sync bookkeeping, never the earned painting content itself — I12
     // protects the record, not this metadata.
     @Query("UPDATE paintings SET syncedAt = :syncedAt WHERE localId = :localId")
