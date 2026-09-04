@@ -1,18 +1,27 @@
 package com.artoffocus.app.domain.focus
 
-/** F8.2 — placeholder art: deterministic seeded gradients. Swapping in real art only touches [PALETTES]. */
+/**
+ * F8.2 — placeholder art: deterministic seeded gradients. Swapping in real art only touches
+ * [PALETTES].
+ *
+ * THIS TABLE IS CROSS-PLATFORM DATA, NOT A LOCAL STYLE CHOICE. `paintings.title` is a stored
+ * column and `seed` is part of a painting's identity key, so the web app and this one must
+ * index the same table or the same painting renders as two different pictures. These entries
+ * are the web app's `PALETTES` (src/modules/focus/domain/artwork.ts) verbatim — change them
+ * in both places or not at all.
+ */
 
 data class Palette(val title: String, val stops: List<String>)
 
 val PALETTES: List<Palette> = listOf(
     Palette("Dusk Over the Harbour", listOf("#c9a05a", "#8a5a2f", "#4a1f1a")),
-    Palette("Morning Fog", listOf("#a9b8bd", "#6f7f86", "#333e42")),
-    Palette("The Orchard in Autumn", listOf("#d98e4a", "#a3502a", "#5c2a17")),
-    Palette("Quiet Water", listOf("#5f8fa3", "#2f5b6e", "#152a33")),
-    Palette("Wheatfield at Noon", listOf("#e3c46a", "#b98a2f", "#6b4a17")),
-    Palette("Night over the City", listOf("#3a3f6e", "#20233f", "#0d0e1c")),
-    Palette("The Rose Garden", listOf("#d97a8c", "#a34a5c", "#5c2530")),
-    Palette("Mountain Pass", listOf("#8a9a8f", "#4f6157", "#242e29")),
+    Palette("The Orchard Wall", listOf("#a8b47a", "#6f7f4a", "#39432a")),
+    Palette("Study in Ochre", listOf("#e0b878", "#b8813f", "#6b4520")),
+    Palette("Cathedral Light", listOf("#e6d3a3", "#c2a06a", "#7d5c33")),
+    Palette("The Slate Coast", listOf("#9fb0b8", "#5f7481", "#33454f")),
+    Palette("Vermilion Interior", listOf("#d98a6a", "#a4503a", "#5c2320")),
+    Palette("Field at Nightfall", listOf("#8fa3b8", "#4f6377", "#2a3543")),
+    Palette("The Gilded Room", listOf("#f0d9a8", "#cba36b", "#8a6a35")),
 )
 
 const val PAINTING_COUNT: Int = 8
