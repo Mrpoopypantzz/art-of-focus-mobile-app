@@ -1,7 +1,19 @@
 package com.artoffocus.app.ui.profile
 
+
+import android.Manifest
+import android.content.pm.PackageManager
+import android.os.Build
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.content.ContextCompat
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -15,8 +27,11 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -37,6 +52,7 @@ import com.artoffocus.app.domain.focus.DEFAULT_TOTAL_MINUTES
 import com.artoffocus.app.domain.focus.FocusLevel
 import com.artoffocus.app.domain.focus.formatDuration
 import com.artoffocus.app.domain.museum.formatFocusSpan
+import com.artoffocus.app.domain.notifications.NotificationKind
 import com.artoffocus.app.ui.common.DangerButton
 import com.artoffocus.app.ui.common.PrimaryButton
 import com.artoffocus.app.ui.theme.AppColors
@@ -238,7 +254,14 @@ private fun SettingsTab(state: ProfileUiState, viewModel: ProfileViewModel) {
     var username by remember(state.profile.username) { mutableStateOf(state.profile.username) }
     var goal by remember(state.profile.goal) { mutableStateOf(state.profile.goal) }
 
-    Column {
+    // Four sections plus the tab bar no longer fit a phone screen — this is the scrolling
+    // element, and it carries the tab-bar clearance so the last control is never trapped
+    // under the floating bar.
+    Column(
+        modifier = Modifier
+            .verticalScroll(rememberScrollState())
+            .padding(bottom = 96.dp),
+    ) {
         Text("IDENTITY", style = EyebrowStyle)
         androidx.compose.foundation.layout.Spacer(Modifier.height(AppSpacing.s3))
         OutlinedTextField(value = username, onValueChange = { username = it }, label = { Text("Username") }, modifier = Modifier.fillMaxWidth())
@@ -257,6 +280,9 @@ private fun SettingsTab(state: ProfileUiState, viewModel: ProfileViewModel) {
         Row(horizontalArrangement = Arrangement.spacedBy(AppSpacing.s2), modifier = Modifier.padding(top = 8.dp)) {
             FocusLevel.entries.forEach { level -> FocusLevelCard(level, level == state.profile.level, Modifier.weight(1f)) { viewModel.saveLevel(level) } }
         }
+
+        androidx.compose.foundation.layout.Spacer(Modifier.height(24.dp))
+        NotificationSection(state, viewModel)
 
         androidx.compose.foundation.layout.Spacer(Modifier.height(24.dp))
         AccountSection(state, viewModel)
@@ -283,6 +309,98 @@ private fun FocusLevelCard(level: FocusLevel, selected: Boolean, modifier: Modif
             formatDuration(DEFAULT_TOTAL_MINUTES.getValue(level)),
             color = if (selected) AppColors.OnInk else AppColors.TextDim,
             style = MaterialTheme.typography.titleMedium,
+        )
+    }
+}
+
+/**
+ * M8 — notification delivery, mirroring the web NotificationSettings section.
+ *
+ * On API 33+ nothing can be posted until POST_NOTIFICATIONS is granted, and until this
+ * section existed nothing ever asked: the workers ran, AppNotifier's permission check
+ * dropped every notification, and the user had no way to find out. The request is made from
+ * here rather than at launch so it arrives with an explanation attached.
+ *
+ * Android needs no equivalent of the web's reliability caveats — WorkManager delivers
+ * regardless of app state — so every kind is offered plainly (see domain/notifications).
+ */
+@Composable
+private fun NotificationSection(state: ProfileUiState, viewModel: ProfileViewModel) {
+    val context = LocalContext.current
+    val needsRuntimeGrant = Build.VERSION.SDK_INT >= 33
+
+    fun granted(): Boolean = !needsRuntimeGrant ||
+        ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) ==
+        PackageManager.PERMISSION_GRANTED
+
+    var allowed by remember { mutableStateOf(granted()) }
+    val launcher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { ok ->
+        allowed = ok
+    }
+
+    // The system dialog only appears once; after a denial the switch lives in system settings,
+    // so re-check on resume rather than leaving a stale "off" after the user changes it there.
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) allowed = granted()
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
+    Text("NOTIFICATIONS", style = EyebrowStyle)
+    androidx.compose.foundation.layout.Spacer(Modifier.height(AppSpacing.s2))
+
+    if (!allowed) {
+        Text(
+            "Get told when a rest ends and when you earn an achievement.",
+            style = MaterialTheme.typography.bodySmall,
+        )
+        androidx.compose.foundation.layout.Spacer(Modifier.height(AppSpacing.s2))
+        PrimaryButton(onClick = {
+            if (needsRuntimeGrant) {
+                launcher.launch(Manifest.permission.POST_NOTIFICATIONS)
+            } else {
+                allowed = true
+            }
+        }) { Text("Turn on notifications") }
+        return
+    }
+
+    NotificationToggle("Rest is over", state.notificationPrefs.restEnd) {
+        viewModel.setNotificationPref(NotificationKind.REST_END, it)
+    }
+    NotificationToggle("Achievement earned", state.notificationPrefs.achievement) {
+        viewModel.setNotificationPref(NotificationKind.ACHIEVEMENT, it)
+    }
+    NotificationToggle("Daily studio call", state.notificationPrefs.dailyCall) {
+        viewModel.setNotificationPref(NotificationKind.DAILY_CALL, it)
+    }
+    NotificationToggle("Streak at risk", state.notificationPrefs.streakRisk) {
+        viewModel.setNotificationPref(NotificationKind.STREAK_RISK, it)
+    }
+}
+
+@Composable
+private fun NotificationToggle(label: String, checked: Boolean, onChange: (Boolean) -> Unit) {
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(vertical = AppSpacing.s1),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(label, style = MaterialTheme.typography.bodyMedium)
+        Switch(
+            checked = checked,
+            onCheckedChange = onChange,
+            colors = SwitchDefaults.colors(
+                checkedThumbColor = AppColors.OnInk,
+                checkedTrackColor = AppColors.Ink,
+                checkedBorderColor = AppColors.Ink,
+                uncheckedThumbColor = AppColors.TextDim,
+                uncheckedTrackColor = AppColors.SurfaceSunken,
+                uncheckedBorderColor = AppColors.LineStrong,
+            ),
         )
     }
 }

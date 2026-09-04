@@ -9,6 +9,7 @@ import com.artoffocus.app.data.repository.AccountState
 import com.artoffocus.app.data.repository.AuthRepository
 import com.artoffocus.app.data.repository.FocusSetupRepository
 import com.artoffocus.app.data.repository.MuseumRepository
+import com.artoffocus.app.data.repository.NotificationPrefsRepository
 import com.artoffocus.app.data.repository.ProfileRepository
 import com.artoffocus.app.domain.account.AccountStatus
 import com.artoffocus.app.domain.achievements.Achievement
@@ -16,6 +17,9 @@ import com.artoffocus.app.domain.achievements.ACHIEVEMENTS
 import com.artoffocus.app.domain.achievements.isEarned
 import com.artoffocus.app.domain.focus.FocusLevel
 import com.artoffocus.app.domain.museum.CompletedPainting
+import com.artoffocus.app.domain.notifications.DEFAULT_PREFS
+import com.artoffocus.app.domain.notifications.NotificationKind
+import com.artoffocus.app.domain.notifications.NotificationPrefs
 import com.artoffocus.app.domain.profile.Profile
 import com.artoffocus.app.domain.profile.Statistics
 import com.artoffocus.app.domain.profile.statistics
@@ -33,6 +37,7 @@ data class ProfileUiState(
     val account: AccountState = AccountState(AccountStatus.SIGNED_OUT, null),
     val authInProgress: Boolean = false,
     val authError: String? = null,
+    val notificationPrefs: NotificationPrefs = DEFAULT_PREFS,
 )
 
 /** F10 — identity, editable focus level (I4, mid-painting-safe), statistics/achievements (F10.7/D35 — finished paintings only). */
@@ -42,6 +47,7 @@ class ProfileViewModel(
     museumRepository: MuseumRepository,
     private val accountRepository: AccountRepository,
     private val authRepository: AuthRepository,
+    private val notificationPrefsRepository: NotificationPrefsRepository,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(ProfileUiState())
@@ -69,6 +75,26 @@ class ProfileViewModel(
                 _state.value = _state.value.copy(account = account)
             }
         }
+        viewModelScope.launch {
+            notificationPrefsRepository.observe().collect { prefs ->
+                _state.value = _state.value.copy(notificationPrefs = prefs)
+            }
+        }
+    }
+
+    /**
+     * M8 — per-kind delivery preferences. The workers read these themselves before posting,
+     * so a toggle takes effect on the next scheduled run without rescheduling anything.
+     */
+    fun setNotificationPref(kind: NotificationKind, enabled: Boolean) {
+        val current = _state.value.notificationPrefs
+        val next = when (kind) {
+            NotificationKind.REST_END -> current.copy(restEnd = enabled)
+            NotificationKind.ACHIEVEMENT -> current.copy(achievement = enabled)
+            NotificationKind.DAILY_CALL -> current.copy(dailyCall = enabled)
+            NotificationKind.STREAK_RISK -> current.copy(streakRisk = enabled)
+        }
+        viewModelScope.launch { notificationPrefsRepository.save(next) }
     }
 
     fun saveIdentity(username: String, goal: String) {
@@ -113,10 +139,18 @@ class ProfileViewModel(
         private val museumRepository: MuseumRepository,
         private val accountRepository: AccountRepository,
         private val authRepository: AuthRepository,
+        private val notificationPrefsRepository: NotificationPrefsRepository,
     ) : ViewModelProvider.Factory {
         override fun <T : ViewModel> create(modelClass: Class<T>): T {
             @Suppress("UNCHECKED_CAST")
-            return ProfileViewModel(profileRepository, focusSetupRepository, museumRepository, accountRepository, authRepository) as T
+            return ProfileViewModel(
+                profileRepository,
+                focusSetupRepository,
+                museumRepository,
+                accountRepository,
+                authRepository,
+                notificationPrefsRepository,
+            ) as T
         }
     }
 }

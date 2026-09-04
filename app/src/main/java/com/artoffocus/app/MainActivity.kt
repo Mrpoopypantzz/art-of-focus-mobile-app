@@ -73,6 +73,7 @@ private fun AppShell(container: AppContainer) {
             container.museumRepository,
             container.accountRepository,
             container.authRepository,
+            container.notificationPrefsRepository,
         ),
     )
 
