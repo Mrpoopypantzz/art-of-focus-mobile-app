@@ -62,6 +62,7 @@ private fun AppShell(container: AppContainer) {
             container.sessionRepository,
             container.artworkRepository,
             container.museumRepository,
+            container.syncRepository,
             appContext,
         ),
     )
@@ -74,6 +75,7 @@ private fun AppShell(container: AppContainer) {
             container.accountRepository,
             container.authRepository,
             container.notificationPrefsRepository,
+            container.syncRepository,
         ),
     )
 

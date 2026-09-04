@@ -38,6 +38,13 @@ class MuseumRepository(private val dao: PaintingDao) {
 
     suspend fun getAll(): List<CompletedPainting> = dao.getAll().mapNotNull { it.toDomainOrNull() }
 
+    /** localId alongside the record — the sync layer needs it to mark rows pushed. */
+    suspend fun allWithLocalIds(): List<Pair<Long, CompletedPainting>> =
+        dao.getAll().mapNotNull { entity -> entity.toDomainOrNull()?.let { entity.localId to it } }
+
+    /** Sync bookkeeping only — never touches the earned painting content (I12). */
+    suspend fun markSynced(localId: Long, syncedAt: Long) = dao.markSynced(localId, syncedAt)
+
     private fun PaintingEntity.toDomainOrNull(): CompletedPainting? = runCatching {
         CompletedPainting(
             // Painting identity is always re-derived from the seed (deterministic hash),

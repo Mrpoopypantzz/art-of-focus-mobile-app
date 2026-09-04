@@ -12,6 +12,7 @@ import com.artoffocus.app.data.repository.NotificationPrefsRepository
 import com.artoffocus.app.data.repository.OnboardingRepository
 import com.artoffocus.app.data.repository.ProfileRepository
 import com.artoffocus.app.data.repository.SessionRepository
+import com.artoffocus.app.data.repository.SyncRepository
 
 /** Simple hand-rolled DI container — no framework needed for this app's size. */
 class AppContainer(context: Context) {
@@ -28,4 +29,5 @@ class AppContainer(context: Context) {
 
     private val supabaseClient by lazy { createAppSupabaseClient() }
     val authRepository by lazy { AuthRepository(supabaseClient, accountRepository) }
+    val syncRepository by lazy { SyncRepository(supabaseClient, museumRepository, profileRepository, accountRepository) }
 }

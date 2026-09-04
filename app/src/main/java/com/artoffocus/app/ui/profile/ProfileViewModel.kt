@@ -11,6 +11,7 @@ import com.artoffocus.app.data.repository.FocusSetupRepository
 import com.artoffocus.app.data.repository.MuseumRepository
 import com.artoffocus.app.data.repository.NotificationPrefsRepository
 import com.artoffocus.app.data.repository.ProfileRepository
+import com.artoffocus.app.data.repository.SyncRepository
 import com.artoffocus.app.domain.account.AccountStatus
 import com.artoffocus.app.domain.achievements.Achievement
 import com.artoffocus.app.domain.achievements.ACHIEVEMENTS
@@ -48,6 +49,7 @@ class ProfileViewModel(
     private val accountRepository: AccountRepository,
     private val authRepository: AuthRepository,
     private val notificationPrefsRepository: NotificationPrefsRepository,
+    private val syncRepository: SyncRepository,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(ProfileUiState())
@@ -117,6 +119,10 @@ class ProfileViewModel(
             runCatching {
                 val result = requestGoogleSignIn(context)
                 authRepository.signInWithGoogleIdToken(result.idToken, result.rawNonce)
+            }.onSuccess {
+                // M6 — one of the two moments web syncs: signing in is when a device's local
+                // work first has somewhere to go. Never during a session (I7).
+                syncRepository.pushLocalWork()
             }.onFailure { e ->
                 _state.value = _state.value.copy(authError = e.message ?: "Sign-in failed")
             }
@@ -140,6 +146,7 @@ class ProfileViewModel(
         private val accountRepository: AccountRepository,
         private val authRepository: AuthRepository,
         private val notificationPrefsRepository: NotificationPrefsRepository,
+        private val syncRepository: SyncRepository,
     ) : ViewModelProvider.Factory {
         override fun <T : ViewModel> create(modelClass: Class<T>): T {
             @Suppress("UNCHECKED_CAST")
@@ -150,6 +157,7 @@ class ProfileViewModel(
                 accountRepository,
                 authRepository,
                 notificationPrefsRepository,
+                syncRepository,
             ) as T
         }
     }

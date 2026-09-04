@@ -9,6 +9,7 @@ import com.artoffocus.app.data.repository.MuseumRepository
 import com.artoffocus.app.data.repository.FocusSetup
 import android.content.Context
 import com.artoffocus.app.data.repository.SessionRepository
+import com.artoffocus.app.data.repository.SyncRepository
 import com.artoffocus.app.notifications.NotificationScheduler
 import com.artoffocus.app.domain.focus.AUTO_CONTINUE_MS
 import com.artoffocus.app.domain.focus.AWAY_PROMPT_MS
@@ -61,6 +62,7 @@ class FocusViewModel(
     private val sessionRepository: SessionRepository,
     private val artworkRepository: ArtworkRepository,
     private val museumRepository: MuseumRepository,
+    private val syncRepository: SyncRepository,
     private val appContext: Context,
 ) : ViewModel() {
 
@@ -166,6 +168,10 @@ class FocusViewModel(
         museumRepository.recordCompletion(record)
         artworkRepository.clearActive()
         sessionRepository.clear()
+        // M6 — the second of web's two sync moments. Deliberately after the local write and
+        // after the session has ended, never during one (I7): if this fails or is slow, the
+        // painting is already safe in Room and the next sync picks it up.
+        syncRepository.pushLocalWork()
         _state.update {
             it.copy(session = IDLE_SESSION, painting = null, activePaintingStartedAt = 0L, justCompletedPainting = record)
         }
@@ -327,11 +333,12 @@ class FocusViewModel(
         private val sessionRepository: SessionRepository,
         private val artworkRepository: ArtworkRepository,
         private val museumRepository: MuseumRepository,
+        private val syncRepository: SyncRepository,
         private val appContext: Context,
     ) : ViewModelProvider.Factory {
         override fun <T : ViewModel> create(modelClass: Class<T>): T {
             @Suppress("UNCHECKED_CAST")
-            return FocusViewModel(focusSetupRepository, sessionRepository, artworkRepository, museumRepository, appContext) as T
+            return FocusViewModel(focusSetupRepository, sessionRepository, artworkRepository, museumRepository, syncRepository, appContext) as T
         }
     }
 }
