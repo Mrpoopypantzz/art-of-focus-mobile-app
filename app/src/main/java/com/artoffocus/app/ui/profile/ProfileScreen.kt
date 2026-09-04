@@ -288,6 +288,15 @@ private fun SettingsTab(state: ProfileUiState, viewModel: ProfileViewModel) {
         androidx.compose.foundation.layout.Spacer(Modifier.height(24.dp))
         NotificationSection(state, viewModel)
 
+        // F10.3 — replaying is just clearing the completion flag; AppRoot reads it and
+        // re-enters the flow, so there is no separate navigation to manage.
+        androidx.compose.foundation.layout.Spacer(Modifier.height(24.dp))
+        Text("INTRODUCTION", style = EyebrowStyle)
+        androidx.compose.foundation.layout.Spacer(Modifier.height(AppSpacing.s2))
+        Text("Watch the opening slides again.", style = MaterialTheme.typography.bodySmall)
+        androidx.compose.foundation.layout.Spacer(Modifier.height(AppSpacing.s2))
+        QuietButton(onClick = viewModel::replayIntroduction) { Text("Replay introduction") }
+
         androidx.compose.foundation.layout.Spacer(Modifier.height(24.dp))
         AccountSection(state, viewModel)
     }

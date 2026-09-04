@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Text
 import androidx.compose.ui.Alignment
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -21,6 +22,9 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.compose.runtime.DisposableEffect
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.artoffocus.app.domain.onboarding.isComplete
+import com.artoffocus.app.ui.onboarding.OnboardingScreen
+import com.artoffocus.app.ui.onboarding.OnboardingViewModel
 import com.artoffocus.app.ui.focus.FocusScreen
 import com.artoffocus.app.ui.focus.FocusViewModel
 import com.artoffocus.app.ui.museum.MuseumScreen
@@ -45,8 +49,33 @@ class MainActivity : ComponentActivity() {
         setContent {
             ArtOfFocusTheme {
                 val container = (application as ArtOfFocusApp).container
-                AppShell(container)
+                AppRoot(container)
             }
+        }
+    }
+}
+
+/**
+ * F12.1 — the introduction gates the studio on first run. It is rendered *instead of* the
+ * shell, not over it, so no session ViewModel is constructed and no ticker is running behind
+ * the slides.
+ */
+@Composable
+private fun AppRoot(container: AppContainer) {
+    val onboardingViewModel: OnboardingViewModel = viewModel(
+        factory = OnboardingViewModel.Factory(
+            container.onboardingRepository,
+            container.profileRepository,
+            container.focusSetupRepository,
+        ),
+    )
+    val onboarding by onboardingViewModel.state.collectAsState()
+
+    if (isComplete(onboarding)) {
+        AppShell(container)
+    } else {
+        Box(modifier = Modifier.fillMaxSize().background(AppColors.Bg)) {
+            OnboardingScreen(onboardingViewModel)
         }
     }
 }
@@ -76,6 +105,7 @@ private fun AppShell(container: AppContainer) {
             container.authRepository,
             container.notificationPrefsRepository,
             container.syncRepository,
+            container.onboardingRepository,
         ),
     )
 

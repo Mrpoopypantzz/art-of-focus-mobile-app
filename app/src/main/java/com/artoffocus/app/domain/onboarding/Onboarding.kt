@@ -35,3 +35,11 @@ fun previousSlide(state: OnboardingState): OnboardingState {
 
 /** F12.2 — skipping counts as completing; it jumps straight to DONE, not SETUP. */
 fun skipOnboarding(): OnboardingState = OnboardingState(step = OnboardingStep.DONE)
+
+/** F12.1 — the last slide's button reads "Continue", not "Next". */
+fun isLastSlide(state: OnboardingState): Boolean = state.slideIndex >= SLIDES.lastIndex
+
+/** Finishing the identity step completes onboarding exactly as skipping does (F12.2). */
+fun completeSetup(): OnboardingState = OnboardingState(step = OnboardingStep.DONE)
+
+fun isComplete(state: OnboardingState): Boolean = state.step == OnboardingStep.DONE

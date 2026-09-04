@@ -10,6 +10,7 @@ import com.artoffocus.app.data.repository.AuthRepository
 import com.artoffocus.app.data.repository.FocusSetupRepository
 import com.artoffocus.app.data.repository.MuseumRepository
 import com.artoffocus.app.data.repository.NotificationPrefsRepository
+import com.artoffocus.app.data.repository.OnboardingRepository
 import com.artoffocus.app.data.repository.ProfileRepository
 import com.artoffocus.app.data.repository.SyncRepository
 import com.artoffocus.app.domain.account.AccountStatus
@@ -50,6 +51,7 @@ class ProfileViewModel(
     private val authRepository: AuthRepository,
     private val notificationPrefsRepository: NotificationPrefsRepository,
     private val syncRepository: SyncRepository,
+    private val onboardingRepository: OnboardingRepository,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(ProfileUiState())
@@ -144,6 +146,11 @@ class ProfileViewModel(
         viewModelScope.launch { museumRepository.clearAll() }
     }
 
+    /** F10.3 — clears the completion flag; AppRoot re-enters the introduction on the next frame. */
+    fun replayIntroduction() {
+        viewModelScope.launch { onboardingRepository.reset() }
+    }
+
     fun dismissAuthError() {
         _state.value = _state.value.copy(authError = null)
     }
@@ -156,6 +163,7 @@ class ProfileViewModel(
         private val authRepository: AuthRepository,
         private val notificationPrefsRepository: NotificationPrefsRepository,
         private val syncRepository: SyncRepository,
+        private val onboardingRepository: OnboardingRepository,
     ) : ViewModelProvider.Factory {
         override fun <T : ViewModel> create(modelClass: Class<T>): T {
             @Suppress("UNCHECKED_CAST")
@@ -167,6 +175,7 @@ class ProfileViewModel(
                 authRepository,
                 notificationPrefsRepository,
                 syncRepository,
+                onboardingRepository,
             ) as T
         }
     }
