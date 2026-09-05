@@ -45,6 +45,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.artoffocus.app.domain.account.AccountStatus
 import com.artoffocus.app.domain.account.hasUnsyncedWork
+import com.artoffocus.app.domain.achievements.AchievementKind
 import com.artoffocus.app.domain.achievements.Achievement
 import com.artoffocus.app.domain.achievements.describeEarned
 import com.artoffocus.app.domain.achievements.nextAchievement
@@ -53,12 +54,14 @@ import com.artoffocus.app.domain.achievements.valueFor
 import com.artoffocus.app.domain.focus.DEFAULT_TOTAL_MINUTES
 import com.artoffocus.app.domain.focus.FocusLevel
 import com.artoffocus.app.domain.focus.formatDuration
+import com.artoffocus.app.domain.friends.formatHandle
 import com.artoffocus.app.domain.museum.formatFocusSpan
 import com.artoffocus.app.domain.notifications.NotificationKind
 import com.artoffocus.app.ui.common.AppSheet
 import com.artoffocus.app.ui.common.DangerButton
 import com.artoffocus.app.ui.common.PrimaryButton
 import com.artoffocus.app.ui.common.QuietButton
+import com.artoffocus.app.ui.common.WaxSeal
 import com.artoffocus.app.ui.theme.AppColors
 import com.artoffocus.app.ui.theme.AppRadius
 import com.artoffocus.app.ui.theme.AppSpacing
@@ -161,6 +164,9 @@ private fun StatCell(label: String, value: String, modifier: Modifier = Modifier
 private fun AchievementsTab(state: ProfileUiState) {
     val stats = state.statistics
     val next = nextAchievement(stats)
+    // Grouped by kind so three short, scannable sections replace one flat run of fourteen.
+    // The order of ACHIEVEMENTS within each kind is preserved (ascending threshold).
+    val grouped = remember(state.achievements) { state.achievements.groupBy { it.kind } }
 
     LazyColumn(contentPadding = PaddingValues(bottom = 96.dp)) {
         item {
@@ -180,21 +186,36 @@ private fun AchievementsTab(state: ProfileUiState) {
             }
         }
 
-        item { androidx.compose.foundation.layout.Spacer(Modifier.height(AppSpacing.s5)) }
+        AchievementKind.entries.forEach { kind ->
+            val rows = grouped[kind].orEmpty()
+            if (rows.isEmpty()) return@forEach
 
-        items(state.achievements, key = { it.id }) { achievement ->
-            AchievementRow(
-                achievement = achievement,
-                earned = state.earnedAchievements.contains(achievement),
-                current = valueFor(stats, achievement.kind),
-            )
+            item(key = "header-$kind") {
+                androidx.compose.foundation.layout.Spacer(Modifier.height(AppSpacing.s6))
+                Text(groupLabel(kind), style = EyebrowStyle)
+                androidx.compose.foundation.layout.Spacer(Modifier.height(AppSpacing.s2))
+            }
+            items(rows, key = { it.id }) { achievement ->
+                AchievementRow(
+                    achievement = achievement,
+                    earned = state.earnedAchievements.contains(achievement),
+                    current = valueFor(stats, achievement.kind),
+                    fraction = progressToward(stats, achievement),
+                )
+            }
         }
 
         item {
-            androidx.compose.foundation.layout.Spacer(Modifier.height(AppSpacing.s3))
-            Text("Counts finished paintings only.", style = MaterialTheme.typography.bodySmall)
+            androidx.compose.foundation.layout.Spacer(Modifier.height(AppSpacing.s5))
+            Text("Counts finished paintings only.", color = AppColors.TextFaint, style = MaterialTheme.typography.bodySmall)
         }
     }
+}
+
+private fun groupLabel(kind: AchievementKind): String = when (kind) {
+    AchievementKind.STREAK -> "STREAKS"
+    AchievementKind.HOURS -> "HOURS"
+    AchievementKind.PAINTINGS -> "PAINTINGS"
 }
 
 /** The nearest-by-proportion achievement, with the progress bar the web app shows. */
@@ -209,21 +230,7 @@ private fun NextAchievement(achievement: Achievement, current: Int, fraction: Fl
     ) {
         Text("Next: ${achievement.title}", style = MaterialTheme.typography.bodyLarge)
         androidx.compose.foundation.layout.Spacer(Modifier.height(AppSpacing.s2))
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(6.dp)
-                .clip(AppRadius.pill)
-                .background(AppColors.Surface),
-        ) {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth(fraction)
-                    .height(6.dp)
-                    .clip(AppRadius.pill)
-                    .background(AppColors.Ink),
-            )
-        }
+        ProgressBar(fraction = fraction, track = AppColors.Surface)
         androidx.compose.foundation.layout.Spacer(Modifier.height(AppSpacing.s2))
         Text(
             "$current of ${achievement.threshold} · ${achievement.description}",
@@ -234,24 +241,66 @@ private fun NextAchievement(achievement: Achievement, current: Int, fraction: Fl
 }
 
 @Composable
-private fun AchievementRow(achievement: Achievement, earned: Boolean, current: Int) {
-    Column(modifier = Modifier.fillMaxWidth().padding(vertical = AppSpacing.s2)) {
-        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+private fun AchievementRow(achievement: Achievement, earned: Boolean, current: Int, fraction: Float) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(bottom = AppSpacing.s1)
+            .clip(RoundedCornerShape(AppRadius.sm))
+            // Earned rows sit on a raised surface — "collected", not merely listed.
+            .background(if (earned) AppColors.SurfaceSunken else AppColors.Bg.copy(alpha = 0f))
+            .padding(horizontal = if (earned) AppSpacing.s3 else 0.dp, vertical = AppSpacing.s2),
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            // Without this the 11sp seal/label rides the 15sp title's top edge and reads crooked.
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
             Text(
                 achievement.title,
+                // Full-strength ink vs. dimmed description — the title has to lead the eye.
                 color = if (earned) AppColors.Text else AppColors.TextDim,
                 style = MaterialTheme.typography.bodyLarge,
             )
-            if (earned) Text("Earned", style = EyebrowStyle)
+            if (earned) WaxSeal(size = 20.dp)
         }
         Text(
             // Earned achievements drop the counter: the number stops being news once it is met.
             if (earned) achievement.description else "$current of ${achievement.threshold} · ${achievement.description}",
-            color = AppColors.TextDim,
+            color = if (earned) AppColors.TextDim else AppColors.TextFaint,
             style = MaterialTheme.typography.bodySmall,
+        )
+        // Only drawn once there is progress to show. An empty track on every untouched row is
+        // fourteen horizontal rules of noise, not information.
+        if (!earned && fraction > 0f) {
+            androidx.compose.foundation.layout.Spacer(Modifier.height(AppSpacing.s2))
+            ProgressBar(fraction = fraction, track = AppColors.SurfaceSunken)
+        }
+    }
+}
+
+/** The shared achievement progress bar — one implementation for the next-up card and the rows. */
+@Composable
+private fun ProgressBar(fraction: Float, track: androidx.compose.ui.graphics.Color) {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(PROGRESS_BAR_HEIGHT)
+            .clip(AppRadius.pill)
+            .background(track),
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth(fraction)
+                .height(PROGRESS_BAR_HEIGHT)
+                .clip(AppRadius.pill)
+                .background(AppColors.Ink),
         )
     }
 }
+
+private val PROGRESS_BAR_HEIGHT = 6.dp
 
 @Composable
 private fun SettingsTab(state: ProfileUiState, viewModel: ProfileViewModel) {
@@ -273,6 +322,9 @@ private fun SettingsTab(state: ProfileUiState, viewModel: ProfileViewModel) {
         OutlinedTextField(value = goal, onValueChange = { goal = it }, label = { Text("Long-term goal") }, modifier = Modifier.fillMaxWidth())
         androidx.compose.foundation.layout.Spacer(Modifier.height(8.dp))
         PrimaryButton(onClick = { viewModel.saveIdentity(username, goal) }) { Text("Save") }
+
+        androidx.compose.foundation.layout.Spacer(Modifier.height(AppSpacing.s4))
+        HandleSection(state, viewModel)
 
         androidx.compose.foundation.layout.Spacer(Modifier.height(24.dp))
         Text("FOCUS LEVEL", style = EyebrowStyle)
@@ -299,6 +351,35 @@ private fun SettingsTab(state: ProfileUiState, viewModel: ProfileViewModel) {
 
         androidx.compose.foundation.layout.Spacer(Modifier.height(24.dp))
         AccountSection(state, viewModel)
+    }
+}
+
+/** D1 prerequisite — friends search only finds accounts with a claimed handle (see FriendsRepository.claimHandle). */
+@Composable
+private fun HandleSection(state: ProfileUiState, viewModel: ProfileViewModel) {
+    var input by remember { mutableStateOf("") }
+
+    if (state.handle != null) {
+        Text("Handle: ${formatHandle(state.handle)}", style = MaterialTheme.typography.bodyMedium)
+        return
+    }
+
+    Row(horizontalArrangement = Arrangement.spacedBy(AppSpacing.s2), modifier = Modifier.fillMaxWidth()) {
+        OutlinedTextField(
+            value = input,
+            onValueChange = { input = it },
+            label = { Text("Claim a handle") },
+            singleLine = true,
+            modifier = Modifier.weight(1f),
+        )
+        PrimaryButton(
+            onClick = { viewModel.claimHandle(input) },
+            enabled = input.isNotBlank() && !state.handleBusy,
+        ) { Text(if (state.handleBusy) "Claiming…" else "Claim") }
+    }
+    state.handleNotice?.let { notice ->
+        androidx.compose.foundation.layout.Spacer(Modifier.height(AppSpacing.s1))
+        Text(notice, color = AppColors.TextDim, style = MaterialTheme.typography.bodySmall)
     }
 }
 

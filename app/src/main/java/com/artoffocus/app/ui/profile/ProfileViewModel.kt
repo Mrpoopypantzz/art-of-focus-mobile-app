@@ -8,6 +8,7 @@ import com.artoffocus.app.data.repository.AccountRepository
 import com.artoffocus.app.data.repository.AccountState
 import com.artoffocus.app.data.repository.AuthRepository
 import com.artoffocus.app.data.repository.FocusSetupRepository
+import com.artoffocus.app.data.repository.FriendsRepository
 import com.artoffocus.app.data.repository.MuseumRepository
 import com.artoffocus.app.data.repository.NotificationPrefsRepository
 import com.artoffocus.app.data.repository.OnboardingRepository
@@ -18,6 +19,9 @@ import com.artoffocus.app.domain.achievements.Achievement
 import com.artoffocus.app.domain.achievements.ACHIEVEMENTS
 import com.artoffocus.app.domain.achievements.isEarned
 import com.artoffocus.app.domain.focus.FocusLevel
+import com.artoffocus.app.domain.friends.describeHandleProblem
+import com.artoffocus.app.domain.friends.handleProblem
+import com.artoffocus.app.domain.friends.normaliseHandle
 import com.artoffocus.app.domain.museum.CompletedPainting
 import com.artoffocus.app.domain.notifications.DEFAULT_PREFS
 import com.artoffocus.app.domain.notifications.NotificationKind
@@ -40,6 +44,9 @@ data class ProfileUiState(
     val authInProgress: Boolean = false,
     val authError: String? = null,
     val notificationPrefs: NotificationPrefs = DEFAULT_PREFS,
+    val handle: String? = null,
+    val handleBusy: Boolean = false,
+    val handleNotice: String? = null,
 )
 
 /** F10 — identity, editable focus level (I4, mid-painting-safe), statistics/achievements (F10.7/D35 — finished paintings only). */
@@ -52,6 +59,7 @@ class ProfileViewModel(
     private val notificationPrefsRepository: NotificationPrefsRepository,
     private val syncRepository: SyncRepository,
     private val onboardingRepository: OnboardingRepository,
+    private val friendsRepository: FriendsRepository,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(ProfileUiState())
@@ -75,8 +83,14 @@ class ProfileViewModel(
             _state.value = _state.value.copy(profile = _state.value.profile.copy(level = setup.level))
         }
         viewModelScope.launch {
+            var wasSignedIn = false
             accountRepository.observe().collect { account ->
                 _state.value = _state.value.copy(account = account)
+                val nowSignedIn = account.status == AccountStatus.SIGNED_IN
+                if (nowSignedIn && !wasSignedIn) {
+                    _state.value = _state.value.copy(handle = friendsRepository.loadMyHandle())
+                }
+                wasSignedIn = nowSignedIn
             }
         }
         viewModelScope.launch {
@@ -155,6 +169,25 @@ class ProfileViewModel(
         _state.value = _state.value.copy(authError = null)
     }
 
+    /** D1 prerequisite — Friends search only finds accounts with a claimed handle. */
+    fun claimHandle(raw: String) {
+        if (_state.value.handleBusy) return
+        val problem = handleProblem(raw)
+        if (problem != null) {
+            _state.value = _state.value.copy(handleNotice = describeHandleProblem(problem))
+            return
+        }
+        _state.value = _state.value.copy(handleBusy = true, handleNotice = null)
+        viewModelScope.launch {
+            val error = friendsRepository.claimHandle(raw)
+            _state.value = _state.value.copy(
+                handleBusy = false,
+                handleNotice = error,
+                handle = if (error == null) normaliseHandle(raw) else _state.value.handle,
+            )
+        }
+    }
+
     class Factory(
         private val profileRepository: ProfileRepository,
         private val focusSetupRepository: FocusSetupRepository,
@@ -164,6 +197,7 @@ class ProfileViewModel(
         private val notificationPrefsRepository: NotificationPrefsRepository,
         private val syncRepository: SyncRepository,
         private val onboardingRepository: OnboardingRepository,
+        private val friendsRepository: FriendsRepository,
     ) : ViewModelProvider.Factory {
         override fun <T : ViewModel> create(modelClass: Class<T>): T {
             @Suppress("UNCHECKED_CAST")
@@ -176,6 +210,7 @@ class ProfileViewModel(
                 notificationPrefsRepository,
                 syncRepository,
                 onboardingRepository,
+                friendsRepository,
             ) as T
         }
     }
