@@ -25,6 +25,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.unit.dp
 import com.artoffocus.app.domain.museum.CompletedPainting
@@ -141,7 +142,12 @@ private fun PaintingCard(painting: CompletedPainting, modifier: Modifier = Modif
                 .background(AppColors.Surface)
                 .border(1.dp, AppColors.Ink.copy(alpha = 0.28f), cardShape),
         ) {
-            PaintingArt(painting = painting.painting, modifier = Modifier.matchParentSize())
+            PaintingArt(
+                painting = painting.painting,
+                modifier = Modifier.matchParentSize(),
+                // Uniform 4:5 cards — a photo is centre-cropped so the grid stays even.
+                contentScale = ContentScale.Crop,
+            )
         }
         androidx.compose.foundation.layout.Spacer(Modifier.height(AppSpacing.s2))
         Text(painting.painting.title, style = StatValueStyle, textAlign = androidx.compose.ui.text.style.TextAlign.Center)

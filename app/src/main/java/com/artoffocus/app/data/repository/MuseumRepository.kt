@@ -28,6 +28,8 @@ class MuseumRepository(private val dao: PaintingDao) {
                 pieces = record.pieces,
                 startedAt = record.startedAt,
                 completedAt = record.completedAt,
+                // Null for a gradient painting; the user's picture for a photo-backed one.
+                photoUri = record.painting.imageRef,
             ),
         )
     }
@@ -50,9 +52,18 @@ class MuseumRepository(private val dao: PaintingDao) {
 
     private fun PaintingEntity.toDomainOrNull(): CompletedPainting? = runCatching {
         CompletedPainting(
-            // Painting identity is always re-derived from the seed (deterministic hash),
-            // never trusted from a possibly-stale stored title column.
-            painting = assignPainting(seed),
+            // A gradient painting is still re-derived from the seed (deterministic hash)
+            // rather than trusted from a possibly-stale stored title column.
+            //
+            // A photo-backed painting cannot be: its picture and the name the user gave it
+            // are not recoverable from a hash, so for those rows the stored columns ARE the
+            // source of truth. The seed is still carried, because identity is (startedAt,
+            // seed) regardless of what the painting looks like.
+            painting = if (photoUri != null) {
+                assignPainting(seed).copy(title = title, imageRef = photoUri)
+            } else {
+                assignPainting(seed)
+            },
             totalMinutes = totalMinutes,
             sittingMinutes = sittingMinutes,
             pieces = pieces,

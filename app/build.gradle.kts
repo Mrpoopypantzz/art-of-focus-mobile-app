@@ -86,6 +86,9 @@ dependencies {
     ksp("androidx.room:room-compiler:$roomVersion")
     implementation("androidx.datastore:datastore-preferences:1.1.1")
 
+    // Image loading for user-supplied painting photos
+    implementation("io.coil-kt:coil-compose:2.7.0")
+
     // Background work (notifications)
     implementation("androidx.work:work-runtime-ktx:2.10.0")
 

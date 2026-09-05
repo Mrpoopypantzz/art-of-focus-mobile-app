@@ -2,6 +2,8 @@ package com.artoffocus.app.ui.common
 
 import androidx.compose.foundation.Canvas
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.layout.ContentScale
+import coil.compose.AsyncImage
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
@@ -24,7 +26,26 @@ import kotlin.math.sin
  * Brush.linearGradient has no direct CSS-angle parameter and there is no mix-blend-mode.
  */
 @Composable
-fun PaintingArt(painting: Painting, modifier: Modifier = Modifier) {
+fun PaintingArt(
+    painting: Painting,
+    modifier: Modifier = Modifier,
+    // Crop is a property of where the painting is shown, not of the painting. The Museum's
+    // cards are a uniform 4:5 grid, so a photo is centre-cropped to fit; during a session the
+    // frame takes the photo's own shape and nothing is cut off. The stored file is never
+    // altered either way — this only decides how it is drawn.
+    contentScale: ContentScale = ContentScale.Fit,
+) {
+    val imageRef = painting.imageRef
+    if (imageRef != null) {
+        AsyncImage(
+            model = imageRef,
+            contentDescription = painting.title,
+            contentScale = contentScale,
+            modifier = modifier,
+        )
+        return
+    }
+
     Canvas(modifier = modifier) {
         drawRect(paintingBaseBrush(painting, size))
 

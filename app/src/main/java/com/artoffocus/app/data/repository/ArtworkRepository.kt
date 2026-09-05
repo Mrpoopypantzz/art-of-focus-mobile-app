@@ -12,11 +12,22 @@ import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 
+/**
+ * `imageRef` MUST keep its default. `ignoreUnknownKeys` tolerates *extra* keys, not missing
+ * ones — without a default, an app update mid-painting would make decoding throw,
+ * [ArtworkRepository.loadActive]'s runCatching would swallow it, and the user's active
+ * painting would silently disappear. That is an I7 violation ("no progress is ever lost").
+ */
 @Serializable
-private data class PaintingDto(val id: String, val title: String, val seed: Long)
+private data class PaintingDto(
+    val id: String,
+    val title: String,
+    val seed: Long,
+    val imageRef: String? = null,
+)
 
-private fun Painting.toDto() = PaintingDto(id, title, seed)
-private fun PaintingDto.toDomain() = Painting(id, title, seed)
+private fun Painting.toDto() = PaintingDto(id, title, seed, imageRef)
+private fun PaintingDto.toDomain() = Painting(id, title, seed, imageRef)
 
 /**
  * Mirrors artworkStorage.ts. I6 — only one painting may be active at a time; this is
@@ -33,11 +44,17 @@ class ArtworkRepository(private val context: Context) {
 
     suspend fun loadActiveStartedAt(): Long? = context.appDataStore.data.first()[PrefKeys.ACTIVE_PAINTING_STARTED_AT]
 
-    /** I6 — refuses to replace a painting that is already active; returns the pre-existing one in that case. */
-    suspend fun assignIfAbsent(seed: Long, startedAt: Long): Painting {
+    /**
+     * I6 — refuses to replace a painting that is already active; returns the pre-existing one
+     * in that case.
+     *
+     * [imageRef] is the user's chosen picture. When null the painting falls back to the
+     * generated gradient exactly as before, which is what every painting was until now.
+     */
+    suspend fun assignIfAbsent(seed: Long, startedAt: Long, imageRef: String? = null): Painting {
         val existing = loadActive()
         if (existing != null) return existing
-        val painting = assignPainting(seed)
+        val painting = assignPainting(seed).copy(imageRef = imageRef)
         context.appDataStore.edit { prefs ->
             prefs[PrefKeys.ACTIVE_PAINTING_JSON] = json.encodeToString(painting.toDto())
             prefs[PrefKeys.ACTIVE_PAINTING_STARTED_AT] = startedAt

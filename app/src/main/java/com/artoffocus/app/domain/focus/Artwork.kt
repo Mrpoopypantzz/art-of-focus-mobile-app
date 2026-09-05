@@ -26,7 +26,21 @@ val PALETTES: List<Palette> = listOf(
 
 const val PAINTING_COUNT: Int = 8
 
-data class Painting(val id: String, val title: String, val seed: Long)
+/**
+ * [imageRef] is the user's own picture when set, and null for the generated gradient the
+ * palettes describe. It is deliberately outside identity: a painting is still identified by
+ * (startedAt, seed) everywhere — locally, in the Supabase unique constraint, and in the sync
+ * conflict target — so attaching a photo never changes which painting a record *is*.
+ *
+ * Kept as an opaque reference rather than a typed local path so the same field can carry a
+ * community painting or a friend's gift later without another schema change.
+ */
+data class Painting(
+    val id: String,
+    val title: String,
+    val seed: Long,
+    val imageRef: String? = null,
+)
 
 /** Deterministic 32-bit hash (two-round Murmur-like finalizer) — same seed always yields the same painting. */
 fun hash(seed: Long): Long {

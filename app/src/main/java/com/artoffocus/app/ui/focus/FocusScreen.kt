@@ -29,6 +29,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.ui.Alignment
@@ -64,6 +65,7 @@ import com.artoffocus.app.domain.focus.sessionProgress
 import com.artoffocus.app.domain.focus.sittingAnchors
 import com.artoffocus.app.domain.focus.sittingsFor
 import com.artoffocus.app.domain.focus.totalAnchors
+import com.artoffocus.app.data.local.PhotoStore
 import com.artoffocus.app.ui.common.AppSheet
 import com.artoffocus.app.ui.common.DangerButton
 import com.artoffocus.app.ui.common.PaintingArt
@@ -86,6 +88,7 @@ import kotlin.math.ceil
 fun FocusScreen(viewModel: FocusViewModel) {
     val state by viewModel.state.collectAsState()
     var setupSheetOpen by remember { mutableStateOf(false) }
+    var picturesSheetOpen by remember { mutableStateOf(false) }
 
     Box(modifier = Modifier.fillMaxSize()) {
         if (state.isLoading) return@Box
@@ -103,6 +106,7 @@ fun FocusScreen(viewModel: FocusViewModel) {
                         state = state,
                         viewModel = viewModel,
                         onOpenSetup = { setupSheetOpen = true },
+                        onOpenPictures = { picturesSheetOpen = true },
                     )
                     else -> RunningContent(state = state, viewModel = viewModel)
                 }
@@ -121,6 +125,22 @@ fun FocusScreen(viewModel: FocusViewModel) {
                     viewModel.startFocusSession()
                     setupSheetOpen = false
                 },
+            )
+        }
+
+        if (picturesSheetOpen) {
+            val container = (androidx.compose.ui.platform.LocalContext.current.applicationContext
+                as com.artoffocus.app.ArtOfFocusApp).container
+            val photoViewModel: com.artoffocus.app.ui.photos.PhotoLibraryViewModel = viewModel(
+                factory = com.artoffocus.app.ui.photos.PhotoLibraryViewModel.Factory(container.photoStore),
+            )
+            com.artoffocus.app.ui.photos.PhotoLibrarySheet(
+                viewModel = photoViewModel,
+                onChoose = { ref ->
+                    picturesSheetOpen = false
+                    viewModel.startFocusSession(imageRef = ref)
+                },
+                onDismiss = { picturesSheetOpen = false },
             )
         }
 
@@ -223,7 +243,12 @@ private fun closestSitting(total: Int, previousSitting: Int): Int {
  * of abandoning it.
  */
 @Composable
-private fun IdleContent(state: FocusUiState, viewModel: FocusViewModel, onOpenSetup: () -> Unit) {
+private fun IdleContent(
+    state: FocusUiState,
+    viewModel: FocusViewModel,
+    onOpenSetup: () -> Unit,
+    onOpenPictures: () -> Unit,
+) {
     val pieces = state.pieces
     val painting = state.painting
 
@@ -301,7 +326,10 @@ private fun IdleContent(state: FocusUiState, viewModel: FocusViewModel, onOpenSe
             }
         } else {
             androidx.compose.foundation.layout.Spacer(Modifier.height(AppSpacing.s2))
-            TextButton(onClick = onOpenSetup) { Text("Change tempo") }
+            Row(horizontalArrangement = Arrangement.spacedBy(AppSpacing.s4)) {
+                TextButton(onClick = onOpenSetup) { Text("Change tempo") }
+                TextButton(onClick = onOpenPictures) { Text("Your pictures") }
+            }
         }
 
         androidx.compose.foundation.layout.Spacer(Modifier.height(AppSpacing.s6))
@@ -312,6 +340,7 @@ private fun IdleContent(state: FocusUiState, viewModel: FocusViewModel, onOpenSe
 private const val CANVAS_WIDTH_FRACTION = 0.72f
 private val CANVAS_MAX_HEIGHT = 380.dp
 private const val MOSAIC_WIDTH_FRACTION = 0.74f
+private const val DEFAULT_CANVAS_RATIO = 4f / 5f
 
 /**
  * "Set your tempo" — a dismissible sheet (FocusSetupSheet.tsx), not a screen. Holds its own draft
@@ -501,6 +530,7 @@ private fun ColumnScope.PreviewRow(cols: Int) {
 
 @Composable
 private fun RunningContent(state: FocusUiState, viewModel: FocusViewModel) {
+    val appContext = androidx.compose.ui.platform.LocalContext.current.applicationContext
     val progress = sessionProgress(state.session, state.setup.sittingMinutes, state.pieces, state.now)
     val revealed = revealedCount(state.session, state.pieces)
     val inRest = state.session.status == SessionStatus.RESTING || state.session.status == SessionStatus.REST_COMPLETE
@@ -515,10 +545,18 @@ private fun RunningContent(state: FocusUiState, viewModel: FocusViewModel) {
         verticalArrangement = Arrangement.spacedBy(AppSpacing.s3),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
+        // Read once per picture, from the file header only (see PhotoStore.aspectRatioOf).
+        val imageRef = state.painting?.imageRef
+        val photoStore = remember(appContext) { PhotoStore(appContext) }
+        val canvasRatio = remember(imageRef) {
+            imageRef?.let { photoStore.aspectRatioOf(it) } ?: DEFAULT_CANVAS_RATIO
+        }
+
         PuzzleMosaic(
             painting = state.painting,
             pieces = state.pieces,
             revealed = revealed,
+            aspectRatio = canvasRatio,
             // Width-constrained, not height-capped: with a 4:5 aspectRatio a heightIn cap
             // is fought by the ratio and the card overflows its own bounds onto the caption.
             // Bounding the width lets the ratio set the height honestly. Layout only — the
@@ -601,12 +639,22 @@ private val cardShape = RoundedCornerShape(AppRadius.lg)
  * flat color instead of the actual painting.
  */
 @Composable
-private fun PuzzleMosaic(painting: Painting?, pieces: Int, revealed: Int, modifier: Modifier = Modifier) {
+private fun PuzzleMosaic(
+    painting: Painting?,
+    pieces: Int,
+    revealed: Int,
+    modifier: Modifier = Modifier,
+    aspectRatio: Float = DEFAULT_CANVAS_RATIO,
+) {
     val layout = layoutFor(pieces)
 
     Box(
         modifier = modifier
-            .aspectRatio(4f / 5f)
+            // The frame takes the picture's own shape during a session, so nothing is cropped
+            // away and no tile covers empty ground. Gradients keep the 4:5 default.
+            // Tile layout, reveal order and piece count are untouched — layoutFor() already
+            // arranges n tiles into whatever rectangle it is given.
+            .aspectRatio(aspectRatio)
             .shadow(elevation = 8.dp, shape = cardShape, ambientColor = AppColors.Ink.copy(alpha = 0.08f), spotColor = AppColors.Ink.copy(alpha = 0.08f))
             .clip(cardShape)
             .background(AppColors.Surface)

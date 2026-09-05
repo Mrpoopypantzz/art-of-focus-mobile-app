@@ -195,11 +195,17 @@ class FocusViewModel(
 
     // --- Session lifecycle ---
 
-    fun startFocusSession() {
+    /**
+     * [imageRef] is a picture the user chose (or shuffled to) in Your Pictures. When null the
+     * painting is the generated gradient, exactly as before. I6 still holds: if a painting is
+     * already active, [ArtworkRepository.assignIfAbsent] returns it and the choice is ignored
+     * rather than replacing live work.
+     */
+    fun startFocusSession(imageRef: String? = null) {
         if (_state.value.session.status != SessionStatus.IDLE) return
         viewModelScope.launch {
             val now = System.currentTimeMillis()
-            val painting = artworkRepository.assignIfAbsent(seed = now, startedAt = now)
+            val painting = artworkRepository.assignIfAbsent(seed = now, startedAt = now, imageRef = imageRef)
             val session = startSession(now)
             persistSession(session)
             _state.update { it.copy(painting = painting, activePaintingStartedAt = now) }
