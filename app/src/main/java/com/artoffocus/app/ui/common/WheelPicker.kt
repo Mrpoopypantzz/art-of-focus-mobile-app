@@ -11,20 +11,25 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -36,6 +41,15 @@ import kotlin.math.abs
  * A horizontally-scrolling, snap-to-center value picker — matches the web app's Wheel
  * component: a fixed cream "band" stays centered, items scroll past it, and whichever item
  * settles under the band becomes the selection (fired on scroll settle, not just on tap).
+ *
+ * Smoothness rules, learned the hard way:
+ * - Item text never changes size or weight. Emphasis is a `graphicsLayer` scale/alpha, which
+ *   the GPU applies without re-measuring text — swapping font size mid-scroll re-runs text
+ *   layout for every visible item on a variable-weight font, which is what made this janky.
+ * - The centered index is derived from scroll offset continuously, so the band tracks the
+ *   finger. The *value* is only committed once scrolling settles.
+ * - Programmatic scrolling only reacts to selection changes that came from outside this
+ *   composable; otherwise it fights the user's own fling.
  */
 @Composable
 fun WheelPicker(
@@ -58,33 +72,60 @@ fun WheelPicker(
         val listState = rememberLazyListState()
         val selectedIndex = values.indexOf(selected).coerceAtLeast(0)
 
-        LaunchedEffect(selectedIndex, values) {
-            listState.animateScrollToItem(selectedIndex)
+        // Which item currently sits under the band. Recomputed from scroll geometry as the
+        // list moves, so the highlight follows the finger instead of snapping after settle.
+        val centeredIndex by remember(listState) {
+            derivedStateOf {
+                val info = listState.layoutInfo
+                val center = (info.viewportStartOffset + info.viewportEndOffset) / 2f
+                info.visibleItemsInfo
+                    .minByOrNull { abs((it.offset + it.size / 2) - center) }
+                    ?.index
+                    ?: 0
+            }
         }
 
-        // LaunchedEffect(listState) never restarts (listState's identity is stable across
-        // recompositions), so this coroutine lives for the composable's whole lifetime — it
-        // must read onSelect/selected/values through rememberUpdatedState, not capture them
-        // directly, or it keeps using whatever those were on the very first composition.
+        // Programmatic scrolling must not fight the user. `selected` changes for two reasons:
+        // the user scrolled this wheel (already in the right place — do nothing), or something
+        // outside set it (a tier button, a clamp after the total changed — scroll there).
+        val currentCentered = rememberUpdatedState(centeredIndex)
+        LaunchedEffect(selectedIndex) {
+            if (selectedIndex != currentCentered.value) {
+                listState.animateScrollToItem(selectedIndex)
+            }
+        }
+
+        // Commit on settle only. Mid-scroll the band highlights `centeredIndex` visually, but
+        // the caller's value changes once, at rest — not once per item flying past.
         val currentOnSelect = rememberUpdatedState(onSelect)
         val currentSelected = rememberUpdatedState(selected)
         val currentValues = rememberUpdatedState(values)
         LaunchedEffect(listState) {
             snapshotFlow { listState.isScrollInProgress }.collect { inProgress ->
                 if (!inProgress) {
-                    val info = listState.layoutInfo
-                    val center = (info.viewportStartOffset + info.viewportEndOffset) / 2f
-                    val centered = info.visibleItemsInfo.minByOrNull { item ->
-                        abs((item.offset + item.size / 2) - center)
-                    }
-                    centered?.let { item ->
-                        currentValues.value.getOrNull(item.index)?.let { value ->
-                            if (value != currentSelected.value) currentOnSelect.value(value)
-                        }
+                    currentValues.value.getOrNull(currentCentered.value)?.let { value ->
+                        if (value != currentSelected.value) currentOnSelect.value(value)
                     }
                 }
             }
         }
+
+        // Edge fades sit *behind* the items (drawn before the LazyRow) so the scrolling
+        // content is never composited through an extra translucent layer every frame.
+        Box(
+            modifier = Modifier
+                .align(Alignment.CenterStart)
+                .width(itemWidth)
+                .fillMaxHeight()
+                .background(Brush.horizontalGradient(listOf(AppColors.SurfaceSunken, AppColors.SurfaceSunken.copy(alpha = 0f)))),
+        )
+        Box(
+            modifier = Modifier
+                .align(Alignment.CenterEnd)
+                .width(itemWidth)
+                .fillMaxHeight()
+                .background(Brush.horizontalGradient(listOf(AppColors.SurfaceSunken.copy(alpha = 0f), AppColors.SurfaceSunken))),
+        )
 
         // The fixed cream "band" — always centered, decorative only.
         Box(
@@ -100,42 +141,70 @@ fun WheelPicker(
             state = listState,
             flingBehavior = rememberSnapFlingBehavior(lazyListState = listState, snapPosition = SnapPosition.Center),
             contentPadding = PaddingValues(horizontal = sidePadding),
+            // Items are 52dp inside a 64dp box; without this they pin to the top and sit 6dp
+            // above the vertically-centered band.
+            verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier.fillMaxSize(),
         ) {
-            items(values) { value ->
-                val isSelected = value == selected
-                Box(
-                    modifier = Modifier
-                        .width(itemWidth)
-                        .height(itemHeight)
-                        .clickable(enabled = !isSelected) { onSelect(value) },
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Text(
-                        text = label(value),
-                        color = if (isSelected) AppColors.Text else AppColors.TextFaint,
-                        fontSize = if (isSelected) 18.sp else 15.sp,
-                        fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Medium,
-                        style = MaterialTheme.typography.bodyMedium,
-                    )
-                }
+            itemsIndexed(values) { index, value ->
+                WheelItem(
+                    text = label(value),
+                    itemWidth = itemWidth,
+                    itemHeight = itemHeight,
+                    // Read inside the graphicsLayer lambda at draw time — never in composition,
+                    // so scrolling re-draws without recomposing or re-measuring any item.
+                    emphasis = { emphasisFor(listState, index) },
+                    onClick = { onSelect(value) },
+                )
             }
         }
+    }
+}
 
-        // Fade the options approaching the edges so the wheel reads as curved (Wheel.css).
-        Box(
-            modifier = Modifier
-                .align(Alignment.CenterStart)
-                .width(itemWidth)
-                .fillMaxHeight()
-                .background(Brush.horizontalGradient(listOf(AppColors.SurfaceSunken, AppColors.SurfaceSunken.copy(alpha = 0f)))),
-        )
-        Box(
-            modifier = Modifier
-                .align(Alignment.CenterEnd)
-                .width(itemWidth)
-                .fillMaxHeight()
-                .background(Brush.horizontalGradient(listOf(AppColors.SurfaceSunken.copy(alpha = 0f), AppColors.SurfaceSunken))),
+/**
+ * 1f when the item is dead-centre, falling to 0f a full item-width away. Derived from live
+ * scroll geometry rather than an animation, so there are no per-item animation objects
+ * running during a fling — the wheel's emphasis simply *is* its distance from the band.
+ */
+private fun emphasisFor(listState: LazyListState, index: Int): Float {
+    val info = listState.layoutInfo
+    val item = info.visibleItemsInfo.firstOrNull { it.index == index } ?: return 0f
+    if (item.size == 0) return 0f
+    val center = (info.viewportStartOffset + info.viewportEndOffset) / 2f
+    val distance = abs((item.offset + item.size / 2f) - center)
+    return (1f - distance / item.size).coerceIn(0f, 1f)
+}
+
+@Composable
+private fun WheelItem(
+    text: String,
+    itemWidth: androidx.compose.ui.unit.Dp,
+    itemHeight: androidx.compose.ui.unit.Dp,
+    emphasis: () -> Float,
+    onClick: () -> Unit,
+) {
+    Box(
+        modifier = Modifier
+            .width(itemWidth)
+            .height(itemHeight)
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            text = text,
+            color = AppColors.Text,
+            fontSize = 15.sp,
+            fontWeight = FontWeight.Medium,
+            style = MaterialTheme.typography.bodyMedium,
+            // Size and weight stay fixed; only this transform changes. A graphicsLayer block
+            // runs at draw time, so no text re-layout happens as the wheel moves.
+            modifier = Modifier.graphicsLayer {
+                val e = emphasis()
+                val scale = 1f + 0.2f * e
+                scaleX = scale
+                scaleY = scale
+                alpha = 0.45f + 0.55f * e
+            },
         )
     }
 }
