@@ -7,7 +7,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.Text
 import androidx.compose.ui.Alignment
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -27,6 +26,8 @@ import com.artoffocus.app.ui.onboarding.OnboardingScreen
 import com.artoffocus.app.ui.onboarding.OnboardingViewModel
 import com.artoffocus.app.ui.focus.FocusScreen
 import com.artoffocus.app.ui.focus.FocusViewModel
+import com.artoffocus.app.ui.friends.FriendsScreen
+import com.artoffocus.app.ui.friends.FriendsViewModel
 import com.artoffocus.app.ui.museum.MuseumScreen
 import com.artoffocus.app.ui.museum.MuseumViewModel
 import com.artoffocus.app.ui.profile.ProfileScreen
@@ -106,6 +107,15 @@ private fun AppShell(container: AppContainer) {
             container.notificationPrefsRepository,
             container.syncRepository,
             container.onboardingRepository,
+            container.friendsRepository,
+        ),
+    )
+    val friendsViewModel: FriendsViewModel = viewModel(
+        factory = FriendsViewModel.Factory(
+            container.friendsRepository,
+            container.groupsRepository,
+            container.accountRepository,
+            container.authRepository,
         ),
     )
 
@@ -129,7 +139,7 @@ private fun AppShell(container: AppContainer) {
                 Tab.FOCUS -> FocusScreen(focusViewModel)
                 Tab.MUSEUM -> MuseumScreen(museumViewModel)
                 Tab.PROFILE -> ProfileScreen(profileViewModel)
-                Tab.FRIENDS -> PlaceholderScreen("Friends")
+                Tab.FRIENDS -> FriendsScreen(friendsViewModel)
             }
         }
 
@@ -137,14 +147,5 @@ private fun AppShell(container: AppContainer) {
             items = Tab.entries.map { entry -> TabBarItem(entry.label, entry.glyph, tab == entry) { tab = entry } },
             modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 20.dp),
         )
-    }
-}
-
-@Composable
-private fun PlaceholderScreen(name: String) {
-    androidx.compose.foundation.layout.Box(
-        modifier = Modifier.padding(24.dp),
-    ) {
-        Text("$name — coming soon")
     }
 }

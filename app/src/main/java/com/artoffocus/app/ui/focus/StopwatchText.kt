@@ -18,7 +18,7 @@ import com.artoffocus.app.ui.theme.FrauncesDisplay
 private val stopwatchStyle = TextStyle(
     fontFamily = FrauncesDisplay,
     fontWeight = FontWeight.W600,
-    fontSize = 32.sp,
+    fontSize = 28.sp,
     letterSpacing = (-0.02).em,
     fontFeatureSettings = "tnum",
 )

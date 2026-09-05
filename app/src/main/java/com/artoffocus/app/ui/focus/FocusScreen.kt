@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -35,8 +36,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.artoffocus.app.domain.focus.FocusLevel
 import com.artoffocus.app.domain.focus.Painting
@@ -65,6 +68,9 @@ import com.artoffocus.app.ui.common.AppSheet
 import com.artoffocus.app.ui.common.DangerButton
 import com.artoffocus.app.ui.common.PaintingArt
 import com.artoffocus.app.ui.common.PrimaryButton
+import com.artoffocus.app.ui.common.DeskMood
+import com.artoffocus.app.ui.common.DeskState
+import com.artoffocus.app.ui.common.StudioDesk
 import com.artoffocus.app.ui.common.QuietButton
 import com.artoffocus.app.ui.common.WheelPicker
 import com.artoffocus.app.ui.theme.AppColors
@@ -86,6 +92,10 @@ fun FocusScreen(viewModel: FocusViewModel) {
 
         Column(modifier = Modifier.fillMaxSize()) {
             StudioHeader()
+
+            // Shared by idle and running: a band here subtracts height once and lets the
+            // content below reflow, rather than stacking under content that cannot scroll.
+            StudioDesk(state = deskStateFor(state), modifier = Modifier.padding(horizontal = AppSpacing.s5))
 
             Box(modifier = Modifier.fillMaxSize()) {
                 when (state.session.status) {
@@ -130,11 +140,67 @@ private fun StudioHeader() {
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = AppSpacing.s5, vertical = AppSpacing.s4),
+            .padding(horizontal = AppSpacing.s5)
+            .padding(top = AppSpacing.s6, bottom = AppSpacing.s4),
+        horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Text("THE STUDIO", style = EyebrowStyle)
+        androidx.compose.foundation.layout.Spacer(Modifier.height(AppSpacing.s1))
         Text("Art of Focus", style = MaterialTheme.typography.displayMedium)
+        androidx.compose.foundation.layout.Spacer(Modifier.height(AppSpacing.s3))
+        // A hairline rule under the wordmark: gives the masthead a base to sit on, and
+        // separates "what this is" from "what you're about to do" without adding a box.
+        HairlineRule(modifier = Modifier.width(56.dp))
     }
+}
+
+/** A centred hairline that fades at both ends — the app's only divider treatment. */
+@Composable
+private fun HairlineRule(modifier: Modifier = Modifier) {
+    Box(
+        modifier = modifier
+            .height(1.dp)
+            .background(
+                Brush.horizontalGradient(
+                    listOf(
+                        AppColors.LineStrong.copy(alpha = 0f),
+                        AppColors.LineStrong,
+                        AppColors.LineStrong.copy(alpha = 0f),
+                    ),
+                ),
+            ),
+    )
+}
+
+/**
+ * Session state → what the desk shows. Read-only: this derives a picture from state the
+ * session already owns and never writes back.
+ *
+ * `elapsedMs` stays frozen at the full sitting target once a sitting completes, so
+ * SITTING_COMPLETE and the rest states are handled explicitly rather than falling through
+ * to the sitting formula — otherwise a finished sitting would read as a full glass.
+ */
+private fun deskStateFor(state: FocusUiState): DeskState = when (state.session.status) {
+    SessionStatus.IDLE -> DeskState(DeskMood.IDLE, fill = 1f)
+
+    SessionStatus.RUNNING, SessionStatus.PAUSED -> {
+        val targetMs = state.setup.sittingMinutes * 60_000L
+        val elapsed = elapsedMs(state.session, state.now).toFloat()
+        // Sand remaining, so a fresh sitting starts full and drains as the work is done.
+        DeskState(DeskMood.WORKING, fill = (1f - elapsed / targetMs).coerceIn(0f, 1f))
+    }
+
+    SessionStatus.RESTING, SessionStatus.REST_COMPLETE -> {
+        val restTotalMs = state.session.restMinutes * 60_000L
+        val fill = if (restTotalMs > 0L) {
+            (restRemainingMs(state.session, state.now).toFloat() / restTotalMs).coerceIn(0f, 1f)
+        } else {
+            0f
+        }
+        DeskState(DeskMood.RESTING, fill = fill)
+    }
+
+    SessionStatus.SITTING_COMPLETE -> DeskState(DeskMood.COMPLETE, fill = 0f)
 }
 
 /** Short/Medium/Long — the web app's tier-anchor labels, distinct from the Profile's Beginner/Intermediate/Advanced. */
@@ -165,54 +231,87 @@ private fun IdleContent(state: FocusUiState, viewModel: FocusViewModel, onOpenSe
         modifier = Modifier
             .fillMaxSize()
             .padding(AppSpacing.screenPadding),
-        verticalArrangement = Arrangement.Center,
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        SetupPuzzlePreview(pieces)
-        androidx.compose.foundation.layout.Spacer(Modifier.height(AppSpacing.s5))
+        // The canvas is the hero: it takes the space it needs and the rest of the screen
+        // arranges itself around it, rather than everything sharing one centred stack.
+        androidx.compose.foundation.layout.Spacer(Modifier.weight(1f))
 
-        Text(
-            buildAnnotatedString {
-                withStyle(StatValueStyle.toSpanStyle()) { append(formatDuration(state.setup.totalMinutes)) }
-                append(" total · ")
-                withStyle(StatValueStyle.toSpanStyle()) { append(formatDuration(state.setup.sittingMinutes)) }
-                append(" per sitting")
-            },
-            style = MaterialTheme.typography.bodyMedium.copy(color = AppColors.TextDim),
-        )
-        androidx.compose.foundation.layout.Spacer(Modifier.height(AppSpacing.s1))
-        Text(
-            if (painting != null) {
-                "${painting.title} · ${describeProgress(state.session, pieces)}"
-            } else {
-                "$pieces sittings · one puzzle piece each"
-            },
-            style = MaterialTheme.typography.bodySmall,
+        // Capped so a tall canvas can't squeeze the caption and action into each other.
+        FramedCanvas(
+            pieces = pieces,
+            modifier = Modifier
+                .fillMaxWidth(CANVAS_WIDTH_FRACTION)
+                .heightIn(max = CANVAS_MAX_HEIGHT),
         )
 
         androidx.compose.foundation.layout.Spacer(Modifier.height(AppSpacing.s6))
 
+        // Caption beneath the work, gallery-label style: the title leads, the particulars
+        // follow in a quieter voice.
+        if (painting != null) {
+            Text(painting.title, style = MaterialTheme.typography.titleMedium, color = AppColors.Text)
+            androidx.compose.foundation.layout.Spacer(Modifier.height(AppSpacing.s1))
+            Text(
+                describeProgress(state.session, pieces),
+                style = MaterialTheme.typography.bodySmall,
+                color = AppColors.TextDim,
+            )
+        } else {
+            Text(
+                buildAnnotatedString {
+                    withStyle(StatValueStyle.toSpanStyle()) { append(formatDuration(state.setup.totalMinutes)) }
+                    append(" total · ")
+                    withStyle(StatValueStyle.toSpanStyle()) { append(formatDuration(state.setup.sittingMinutes)) }
+                    append(" per sitting")
+                },
+                style = MaterialTheme.typography.bodyMedium.copy(color = AppColors.TextDim),
+            )
+            androidx.compose.foundation.layout.Spacer(Modifier.height(AppSpacing.s1))
+            Text(
+                "$pieces sittings · one puzzle piece each",
+                style = MaterialTheme.typography.bodySmall,
+                color = AppColors.TextFaint,
+            )
+        }
+
+        // Fixed, not flexible: the caption belongs to the canvas above it, and the action
+        // must never drift up into it however tall the canvas renders.
+        androidx.compose.foundation.layout.Spacer(Modifier.height(AppSpacing.s6))
+        androidx.compose.foundation.layout.Spacer(Modifier.weight(1f))
+
+        // Action block, anchored to the bottom of the composition — the eye travels
+        // masthead → canvas → caption → action, in that order, every time.
         PrimaryButton(onClick = viewModel::startFocusSession, modifier = Modifier.fillMaxWidth()) {
             Text("Begin sitting")
         }
 
-        androidx.compose.foundation.layout.Spacer(Modifier.height(AppSpacing.s3))
-
         if (painting != null) {
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Text(
-                    "Locked to ${formatDuration(state.setup.totalMinutes)} · ${formatDuration(state.setup.sittingMinutes)} " +
-                        "while this painting is unfinished. Finish or abandon it to change your tempo.",
-                    style = MaterialTheme.typography.bodySmall,
-                    modifier = Modifier.padding(horizontal = AppSpacing.s2),
-                )
-                TextButton(onClick = viewModel::abandonPainting) { Text("Abandon this painting") }
+            androidx.compose.foundation.layout.Spacer(Modifier.height(AppSpacing.s4))
+            Text(
+                "Locked to ${formatDuration(state.setup.totalMinutes)} · ${formatDuration(state.setup.sittingMinutes)} " +
+                    "while this painting is unfinished.",
+                style = MaterialTheme.typography.bodySmall,
+                color = AppColors.TextFaint,
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+            )
+            androidx.compose.foundation.layout.Spacer(Modifier.height(AppSpacing.s1))
+            TextButton(onClick = viewModel::abandonPainting) {
+                Text("Abandon this painting", color = AppColors.TextDim, style = MaterialTheme.typography.bodySmall)
             }
         } else {
+            androidx.compose.foundation.layout.Spacer(Modifier.height(AppSpacing.s2))
             TextButton(onClick = onOpenSetup) { Text("Change tempo") }
         }
+
+        androidx.compose.foundation.layout.Spacer(Modifier.height(AppSpacing.s6))
     }
 }
+
+/** The canvas fills most of the width — it is the thing the whole screen is about. */
+private const val CANVAS_WIDTH_FRACTION = 0.72f
+private val CANVAS_MAX_HEIGHT = 380.dp
+private const val MOSAIC_WIDTH_FRACTION = 0.74f
 
 /**
  * "Set your tempo" — a dismissible sheet (FocusSetupSheet.tsx), not a screen. Holds its own draft
@@ -244,7 +343,7 @@ private fun SetupSheet(
             if (pieces != null) {
                 Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        SetupPuzzlePreview(pieces)
+                        FramedCanvas(pieces, Modifier.width(150.dp), frameWidth = 5.dp)
                         androidx.compose.foundation.layout.Spacer(Modifier.height(AppSpacing.s2))
                         Text(
                             "$pieces piece${if (pieces == 1) "" else "s"} to uncover",
@@ -273,7 +372,7 @@ private fun SetupSheet(
                     draftTotal = value
                     draftSitting = closestSitting(value, draftSitting)
                 },
-                label = ::formatDuration,
+                label = durationLabel,
             )
 
             androidx.compose.foundation.layout.Spacer(Modifier.height(AppSpacing.s6))
@@ -286,11 +385,14 @@ private fun SetupSheet(
                 onSelect = { value -> draftSitting = value },
             )
             androidx.compose.foundation.layout.Spacer(Modifier.height(AppSpacing.s2))
+            // Remembered: sittingsFor allocates a fresh list, and an unstable `values`
+            // identity retriggers the wheel's scroll-to-selection effect on every frame.
+            val sittingValues = remember(draftTotal) { sittingsFor(draftTotal) }
             WheelPicker(
-                values = sittingsFor(draftTotal),
+                values = sittingValues,
                 selected = draftSitting,
                 onSelect = { value -> draftSitting = value },
-                label = ::formatDuration,
+                label = durationLabel,
             )
             androidx.compose.foundation.layout.Spacer(Modifier.height(AppSpacing.s2))
             Text(describePieces(draftTotal, draftSitting) ?: " ", style = MaterialTheme.typography.bodySmall)
@@ -338,30 +440,59 @@ private fun TierAnchorRow(anchors: List<Pair<FocusLevel, Int>>, selected: Int, o
     }
 }
 
+/**
+ * The idle canvas, hung like a picture: a soft cast shadow, a gilded mat, then the tiled
+ * work itself. The frame is drawn rather than shipped as an asset so it tints with the
+ * palette and stays crisp at any size.
+ */
+@Composable
+private fun FramedCanvas(pieces: Int, modifier: Modifier = Modifier, frameWidth: Dp = FRAME_WIDTH) {
+    val frameShape = RoundedCornerShape(AppRadius.lg)
+
+    Box(
+        modifier = modifier
+            .aspectRatio(4f / 5f)
+            .shadow(
+                elevation = frameWidth * 1.8f,
+                shape = frameShape,
+                ambientColor = AppColors.Ink.copy(alpha = 0.30f),
+                spotColor = AppColors.Ink.copy(alpha = 0.30f),
+            )
+            .clip(frameShape)
+            .background(gildedFrameBrush)
+            .padding(frameWidth),
+    ) {
+        SetupPuzzlePreview(pieces = pieces, modifier = Modifier.fillMaxSize())
+    }
+}
+
+private val FRAME_WIDTH = 10.dp
+
 /** The setup-time preview: gilded tiles over a plain surface — no painting exists yet (I6). */
 @Composable
 private fun SetupPuzzlePreview(pieces: Int, modifier: Modifier = Modifier) {
     val layout = layoutFor(pieces)
-    val previewShape = RoundedCornerShape(AppRadius.lg)
+    val previewShape = RoundedCornerShape(AppRadius.sm)
 
     Box(
         modifier = modifier
-            .width(150.dp)
-            .aspectRatio(4f / 5f)
             .clip(previewShape)
-            .background(AppColors.Surface)
-            .border(1.dp, AppColors.Ink.copy(alpha = 0.28f), previewShape),
+            // Tile gaps show this through, so the seams read as shadow between pieces
+            // rather than as white gridlines drawn on top.
+            .background(AppColors.Ink.copy(alpha = 0.55f)),
     ) {
-        Column(modifier = Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(1.dp)) {
+        Column(modifier = Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(TILE_GAP)) {
             repeat(layout.completeRows) { PreviewRow(cols = layout.cols) }
             if (layout.lastRowCount > 0) PreviewRow(cols = layout.lastRowCount)
         }
     }
 }
 
+private val TILE_GAP = 2.dp
+
 @Composable
 private fun ColumnScope.PreviewRow(cols: Int) {
-    Row(modifier = Modifier.fillMaxWidth().weight(1f), horizontalArrangement = Arrangement.spacedBy(1.dp)) {
+    Row(modifier = Modifier.fillMaxWidth().weight(1f), horizontalArrangement = Arrangement.spacedBy(TILE_GAP)) {
         repeat(cols) {
             Box(modifier = Modifier.weight(1f).fillMaxHeight().background(gildedTileBrush))
         }
@@ -379,17 +510,30 @@ private fun RunningContent(state: FocusUiState, viewModel: FocusViewModel) {
 
     Column(
         modifier = Modifier.fillMaxSize().padding(AppSpacing.screenPadding),
-        verticalArrangement = Arrangement.Center,
+        // Top-anchored, not centred: the desk band above is the composition's anchor, and
+        // centring leaves a dead gap between it and the canvas whenever the card is small.
+        verticalArrangement = Arrangement.spacedBy(AppSpacing.s3),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         PuzzleMosaic(
             painting = state.painting,
             pieces = state.pieces,
             revealed = revealed,
-            modifier = Modifier.fillMaxWidth().padding(16.dp),
+            // Width-constrained, not height-capped: with a 4:5 aspectRatio a heightIn cap
+            // is fought by the ratio and the card overflows its own bounds onto the caption.
+            // Bounding the width lets the ratio set the height honestly. Layout only — the
+            // tiles, the reveal order and the piece count are untouched.
+            modifier = Modifier
+                .fillMaxWidth(MOSAIC_WIDTH_FRACTION)
+                .padding(vertical = AppSpacing.s2),
         )
 
-        Text(describeSessionProgress(progress, state.pieces), style = MaterialTheme.typography.bodyMedium)
+        androidx.compose.foundation.layout.Spacer(Modifier.height(AppSpacing.s2))
+        Text(
+            describeSessionProgress(progress, state.pieces),
+            color = AppColors.TextDim,
+            style = MaterialTheme.typography.bodySmall,
+        )
         if (!inRest) {
             StopwatchText(
                 text = formatElapsed(elapsedMs(state.session, state.now)),
@@ -397,14 +541,18 @@ private fun RunningContent(state: FocusUiState, viewModel: FocusViewModel) {
             )
         }
 
-        androidx.compose.foundation.layout.Spacer(Modifier.height(16.dp))
+        androidx.compose.foundation.layout.Spacer(Modifier.height(AppSpacing.s6))
 
         when (state.session.status) {
-            SessionStatus.RUNNING -> RunningControls(state, viewModel)
+            SessionStatus.RUNNING -> RunningControls(viewModel)
             SessionStatus.PAUSED -> PausedControls(viewModel)
             else -> Unit
         }
     }
+
+    // Hoisted out of the control variants: cancelling is reachable while running AND while
+    // paused, so the confirmation belongs to the request, not to one button's composable.
+    state.cancelCountdown?.let { CancelSheet(cancelCountdown = it, viewModel = viewModel) }
 
     when {
         pickingRest -> RestSheet(
@@ -428,7 +576,22 @@ private fun RunningContent(state: FocusUiState, viewModel: FocusViewModel) {
     }
 }
 
+/** Stable identity — `::formatDuration` allocates a new reference per composition, which
+ *  makes WheelPicker's `label` param unstable and defeats skipping. */
+private val durationLabel: (Int) -> String = { formatDuration(it) }
+
 private val gildedTileBrush = Brush.linearGradient(listOf(AppColors.GildedStart, AppColors.GildedEnd))
+
+/**
+ * Frame moulding in dark wood, not gilt — the tiles are already gold, and a gold frame around
+ * gold tiles has nothing to contain. Light catches the top-left and falls away, with a thin
+ * bright band where the moulding turns.
+ */
+private val gildedFrameBrush = Brush.linearGradient(
+    0.00f to AppColors.InkSoft,
+    0.50f to AppColors.Ink,
+    1.00f to AppColors.InkSoft,
+)
 private val cardShape = RoundedCornerShape(AppRadius.lg)
 
 /**
@@ -484,29 +647,65 @@ private fun androidx.compose.foundation.layout.ColumnScope.MosaicRow(cols: Int, 
 }
 
 @Composable
-private fun RunningControls(state: FocusUiState, viewModel: FocusViewModel) {
-    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-        QuietButton(onClick = viewModel::pause) { Text("Pause") }
-        CancelButton(state.cancelCountdown, viewModel)
-    }
+private fun RunningControls(viewModel: FocusViewModel) {
+    SessionControlBar(
+        primaryLabel = "Pause",
+        onPrimary = viewModel::pause,
+        onCancel = viewModel::requestCancel,
+    )
 }
 
 @Composable
 private fun PausedControls(viewModel: FocusViewModel) {
-    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-        PrimaryButton(onClick = viewModel::resume) { Text("Resume") }
-        CancelButton(null, viewModel)
+    SessionControlBar(
+        primaryLabel = "Resume",
+        onPrimary = viewModel::resume,
+        onCancel = viewModel::requestCancel,
+    )
+}
+
+/**
+ * Session controls in the app's own pill idiom — the same ink-fill / sunken-surface pair the
+ * tab bar and every toggle row already use. Two separate pills, not one divided capsule: the
+ * actions are unrelated, and the shared outline was claiming a kinship they do not have.
+ *
+ * Cancel stays the quieter of the two (I9 — quitting has friction), but keeps a real pill
+ * target rather than collapsing to bare text.
+ */
+@Composable
+private fun SessionControlBar(primaryLabel: String, onPrimary: () -> Unit, onCancel: () -> Unit) {
+    Row(horizontalArrangement = Arrangement.spacedBy(AppSpacing.s3)) {
+        SessionPill(
+            label = primaryLabel,
+            fill = AppColors.Ink,
+            content = AppColors.OnInk,
+            onClick = onPrimary,
+        )
+        SessionPill(
+            label = "Cancel",
+            fill = AppColors.SurfaceSunken,
+            content = AppColors.TextDim,
+            onClick = onCancel,
+        )
     }
 }
 
 @Composable
-private fun CancelButton(cancelCountdown: Int?, viewModel: FocusViewModel) {
-    TextButton(onClick = viewModel::requestCancel) { Text("Cancel") }
-
-    if (cancelCountdown != null) {
-        CancelSheet(cancelCountdown = cancelCountdown, viewModel = viewModel)
+private fun SessionPill(label: String, fill: Color, content: Color, onClick: () -> Unit) {
+    Box(
+        modifier = Modifier
+            .height(SESSION_CONTROL_HEIGHT)
+            .clip(AppRadius.pill)
+            .background(fill)
+            .clickable(onClick = onClick)
+            .padding(horizontal = AppSpacing.s8),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(label, color = content, style = MaterialTheme.typography.bodyLarge)
     }
 }
+
+private val SESSION_CONTROL_HEIGHT = 44.dp
 
 /** "Leave this sitting?" — mirrors the web's shared Sheet.tsx modal (SessionControls.tsx). */
 @OptIn(ExperimentalMaterial3Api::class)
@@ -590,7 +789,8 @@ private fun RestSheet(
                     }
                 },
             ) {
-                WheelPicker(values = restOptions(), selected = minutes, onSelect = { minutes = it }, label = ::formatDuration)
+                val restValues = remember { restOptions() }
+                WheelPicker(values = restValues, selected = minutes, onSelect = { minutes = it }, label = durationLabel)
             }
         }
         RestPhase.RESTING, RestPhase.REST_COMPLETE -> {
