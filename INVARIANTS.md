@@ -166,6 +166,10 @@ Consequences:
   configured, only mirrors it — sync happens on sign-in and after painting
   completion, never inside the timer's path. The app must work fully offline
   with no account.
+- **Choosing a picture happens before a session, never during one.** Your
+  Pictures is reachable only from the idle screen, and a picture is copied to
+  private storage at import — so no file I/O and no picker sits in the timer's
+  path.
 
 **Native improvement over the web app:** the web version needed a whole
 platform-support detector (`domain/notifications.ts`'s `supportLevel`) because
@@ -238,6 +242,18 @@ deliberately exposes **no update or delete method** — mirroring
 policy (both denied to everyone by omission). One malformed record must not
 cost the whole collection: [MuseumRepository](app/src/main/java/com/artoffocus/app/data/repository/MuseumRepository.kt)
 drops unconvertible rows individually on read.
+
+**A photo-backed painting's picture is part of the painting.** When the art is
+the user's own photo rather than a derivable gradient, the stored file carries
+the same permanence as the record: it is copied into app-private storage at
+import (never referenced by a revocable gallery URI), and nothing may delete a
+picture that a completed painting still refers to.
+
+**Schema changes stay additive.** The database is at version 2;
+`data/local/Migrations.kt` adds the nullable `photoUri` column and touches no
+existing data. `fallbackToDestructiveMigration()` drops the table and must
+never be used — the failure mode of a missing migration is a loud crash, which
+is correct, and far preferable to a silent wipe.
 
 ---
 

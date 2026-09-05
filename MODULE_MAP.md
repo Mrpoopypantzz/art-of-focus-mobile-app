@@ -68,9 +68,35 @@ Files: `domain/focus/{Durations,Session,Puzzle,Artwork,FocusLevel}.kt`,
 
 Status: **built** (assignment + division + reveal + completion). No cabinet-
 opening ceremony animation (the source web app built one, then reverted it —
-see its MODULE_MAP D47; not attempted here either). Painting art is the same
-deterministic seeded-gradient placeholder scheme as the source app
-(`domain/focus/Artwork.kt`) — swapping in real art only touches `PALETTES`.
+see its MODULE_MAP D47; not attempted here either).
+
+A painting is either a **generated gradient** (the deterministic seeded scheme
+shared with the source app, `domain/focus/Artwork.kt`) or **one of the user's
+own pictures**. `Painting.imageRef` distinguishes them: null means gradient.
+The earlier note that "swapping in real art only touches `PALETTES`" applied
+to a global swap; per-painting user art needed the model to carry state that
+is not derivable from the seed.
+
+Decisions worth keeping:
+- **Two contexts, two crop rules.** During a session the frame takes the
+  picture's own aspect ratio (nothing cropped, no tile over empty ground);
+  in the Museum cards stay a uniform 4:5 and the photo is centre-cropped.
+  The crop is display-only — the stored file is never altered.
+- **Pictures are never consumed.** One picture can back any number of
+  paintings; abandoning a painting leaves it in the library.
+- **Photos are copied into app-private storage** at import, never referenced
+  by gallery URI (revocable grant, does not survive reboot) — I12.
+- **Photo paintings are not synced.** The `paintings` table carries no image,
+  so a pushed photo painting would read back elsewhere as a gradient.
+- **Coil** (`io.coil-kt:coil-compose`) is the app's image loader.
+- Two further painting sources are planned and deliberately not built:
+  community paintings (needs an upload pipeline and moderation) and friend
+  gifts (accepted unseen, unveiled by focusing — needs Supabase Storage and
+  the D6 auth work).
+
+Room is at **schema version 2**; `data/local/Migrations.kt` holds the first
+migration (adds the nullable `photoUri` column). `fallbackToDestructiveMigration`
+must never be used — it drops the museum (I12).
 
 ---
 
