@@ -21,4 +21,5 @@ data class PaintingEntity(
     val startedAt: Long,
     val completedAt: Long,
     val syncedAt: Long? = null, // null = not yet mirrored to Supabase
+    val photoUri: String? = null, // null = a generated gradient painting; set = the user's own photo
 )

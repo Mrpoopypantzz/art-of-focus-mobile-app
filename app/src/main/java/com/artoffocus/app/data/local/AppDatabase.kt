@@ -5,7 +5,7 @@ import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
 
-@Database(entities = [PaintingEntity::class], version = 1, exportSchema = false)
+@Database(entities = [PaintingEntity::class], version = 2, exportSchema = false)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun paintingDao(): PaintingDao
 
@@ -17,7 +17,10 @@ abstract class AppDatabase : RoomDatabase() {
                 context.applicationContext,
                 AppDatabase::class.java,
                 "art_of_focus.db",
-            ).build().also { instance = it }
+            )
+                // Never fallbackToDestructiveMigration: it drops the museum (I12).
+                .addMigrations(MIGRATION_1_2)
+                .build().also { instance = it }
         }
     }
 }
