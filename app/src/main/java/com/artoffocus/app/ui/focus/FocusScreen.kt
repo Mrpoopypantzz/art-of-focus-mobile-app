@@ -38,6 +38,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.Dp
@@ -65,7 +66,6 @@ import com.artoffocus.app.domain.focus.sessionProgress
 import com.artoffocus.app.domain.focus.sittingAnchors
 import com.artoffocus.app.domain.focus.sittingsFor
 import com.artoffocus.app.domain.focus.totalAnchors
-import com.artoffocus.app.data.local.PhotoStore
 import com.artoffocus.app.ui.common.AppSheet
 import com.artoffocus.app.ui.common.DangerButton
 import com.artoffocus.app.ui.common.PaintingArt
@@ -340,7 +340,6 @@ private fun IdleContent(
 private const val CANVAS_WIDTH_FRACTION = 0.72f
 private val CANVAS_MAX_HEIGHT = 380.dp
 private const val MOSAIC_WIDTH_FRACTION = 0.74f
-private const val DEFAULT_CANVAS_RATIO = 4f / 5f
 
 /**
  * "Set your tempo" — a dismissible sheet (FocusSetupSheet.tsx), not a screen. Holds its own draft
@@ -530,7 +529,6 @@ private fun ColumnScope.PreviewRow(cols: Int) {
 
 @Composable
 private fun RunningContent(state: FocusUiState, viewModel: FocusViewModel) {
-    val appContext = androidx.compose.ui.platform.LocalContext.current.applicationContext
     val progress = sessionProgress(state.session, state.setup.sittingMinutes, state.pieces, state.now)
     val revealed = revealedCount(state.session, state.pieces)
     val inRest = state.session.status == SessionStatus.RESTING || state.session.status == SessionStatus.REST_COMPLETE
@@ -545,18 +543,10 @@ private fun RunningContent(state: FocusUiState, viewModel: FocusViewModel) {
         verticalArrangement = Arrangement.spacedBy(AppSpacing.s3),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        // Read once per picture, from the file header only (see PhotoStore.aspectRatioOf).
-        val imageRef = state.painting?.imageRef
-        val photoStore = remember(appContext) { PhotoStore(appContext) }
-        val canvasRatio = remember(imageRef) {
-            imageRef?.let { photoStore.aspectRatioOf(it) } ?: DEFAULT_CANVAS_RATIO
-        }
-
         PuzzleMosaic(
             painting = state.painting,
             pieces = state.pieces,
             revealed = revealed,
-            aspectRatio = canvasRatio,
             // Width-constrained, not height-capped: with a 4:5 aspectRatio a heightIn cap
             // is fought by the ratio and the card overflows its own bounds onto the caption.
             // Bounding the width lets the ratio set the height honestly. Layout only — the
@@ -639,28 +629,27 @@ private val cardShape = RoundedCornerShape(AppRadius.lg)
  * flat color instead of the actual painting.
  */
 @Composable
-private fun PuzzleMosaic(
-    painting: Painting?,
-    pieces: Int,
-    revealed: Int,
-    modifier: Modifier = Modifier,
-    aspectRatio: Float = DEFAULT_CANVAS_RATIO,
-) {
+private fun PuzzleMosaic(painting: Painting?, pieces: Int, revealed: Int, modifier: Modifier = Modifier) {
     val layout = layoutFor(pieces)
 
     Box(
         modifier = modifier
-            // The frame takes the picture's own shape during a session, so nothing is cropped
-            // away and no tile covers empty ground. Gradients keep the 4:5 default.
-            // Tile layout, reveal order and piece count are untouched — layoutFor() already
-            // arranges n tiles into whatever rectangle it is given.
-            .aspectRatio(aspectRatio)
+            .aspectRatio(4f / 5f)
             .shadow(elevation = 8.dp, shape = cardShape, ambientColor = AppColors.Ink.copy(alpha = 0.08f), spotColor = AppColors.Ink.copy(alpha = 0.08f))
             .clip(cardShape)
             .background(AppColors.Surface)
             .border(1.dp, AppColors.Ink.copy(alpha = 0.28f), cardShape),
     ) {
-        painting?.let { PaintingArt(painting = it, modifier = Modifier.matchParentSize()) }
+        painting?.let {
+            PaintingArt(
+                painting = it,
+                modifier = Modifier.matchParentSize(),
+                // The card is a fixed 4:5, so a photo fills it rather than letterboxing —
+                // otherwise tiles would sit over empty ground. Display-only; the stored
+                // file is never altered.
+                contentScale = ContentScale.Crop,
+            )
+        }
 
         var index = 0
         Column(modifier = Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(1.dp)) {
