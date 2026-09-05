@@ -31,6 +31,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
+import com.artoffocus.app.domain.focus.canDeletePicture
 import com.artoffocus.app.ui.common.AppSheet
 import com.artoffocus.app.ui.common.PrimaryButton
 import com.artoffocus.app.ui.common.QuietButton
@@ -104,6 +105,7 @@ fun PhotoLibrarySheet(
             items(state.photos, key = { it }) { ref ->
                 PhotoTile(
                     ref = ref,
+                    locked = !canDeletePicture(ref, state.inUse),
                     onChoose = { onChoose(ref) },
                     onRemove = { viewModel.remove(ref) },
                 )
@@ -113,7 +115,7 @@ fun PhotoLibrarySheet(
 }
 
 @Composable
-private fun PhotoTile(ref: String, onChoose: () -> Unit, onRemove: () -> Unit) {
+private fun PhotoTile(ref: String, locked: Boolean, onChoose: () -> Unit, onRemove: () -> Unit) {
     Column {
         Box(
             modifier = Modifier
@@ -130,11 +132,20 @@ private fun PhotoTile(ref: String, onChoose: () -> Unit, onRemove: () -> Unit) {
                 modifier = Modifier.matchParentSize(),
             )
         }
+        // A picture a painting depends on cannot be removed (I12) — but it stays choosable,
+        // because using a picture never consumes it.
         Box(
-            modifier = Modifier.fillMaxWidth().clickable(onClick = onRemove).padding(top = 2.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .then(if (locked) Modifier else Modifier.clickable(onClick = onRemove))
+                .padding(top = 2.dp),
             contentAlignment = Alignment.Center,
         ) {
-            Text("Remove", color = AppColors.TextFaint, style = MaterialTheme.typography.labelSmall)
+            Text(
+                if (locked) "In your Museum" else "Remove",
+                color = AppColors.TextFaint,
+                style = MaterialTheme.typography.labelSmall,
+            )
         }
     }
 }

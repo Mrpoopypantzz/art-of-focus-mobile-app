@@ -58,11 +58,13 @@ class PhotoStore(private val context: Context) {
     }.getOrNull()
 
     /**
-     * Removes a picture from the library.
+     * Deletes a picture, unconditionally. This is the file layer and it enforces nothing.
      *
-     * Callers must not delete a picture that a completed painting still refers to — that
-     * would destroy the painting's artwork, which I12 forbids. The library screen checks the
-     * Museum before offering this.
+     * Whether a picture MAY be deleted is a question about paintings, not files: see
+     * `domain/focus/PhotoUsage.kt`, which is what [com.artoffocus.app.ui.photos.PhotoLibraryViewModel]
+     * consults before calling this. Deleting a picture a painting depends on destroys that
+     * painting's artwork, which I12 forbids — so no new caller may reach this without making
+     * that check first.
      */
     suspend fun delete(ref: String): Boolean = withContext(Dispatchers.IO) {
         runCatching { File(ref).delete() }.getOrDefault(false)

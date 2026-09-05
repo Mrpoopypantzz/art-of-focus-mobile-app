@@ -249,6 +249,15 @@ the same permanence as the record: it is copied into app-private storage at
 import (never referenced by a revocable gallery URI), and nothing may delete a
 picture that a completed painting still refers to.
 
+That last rule is enforced, not merely asserted: `domain/focus/PhotoUsage.kt`
+computes which pictures are in use, and
+[PhotoLibraryViewModel](app/src/main/java/com/artoffocus/app/ui/photos/PhotoLibraryViewModel.kt)
+refuses to delete one of them. The picture in the **active** painting is
+covered too — losing it mid-session would destroy work in progress (I7).
+`PhotoStore.delete` itself is a dumb file operation and enforces nothing, so
+any new caller must make the same check. Locking concerns deletion only: a
+locked picture stays selectable, because using a picture never consumes it.
+
 **Schema changes stay additive.** The database is at version 2;
 `data/local/Migrations.kt` adds the nullable `photoUri` column and touches no
 existing data. `fallbackToDestructiveMigration()` drops the table and must

@@ -132,7 +132,11 @@ fun FocusScreen(viewModel: FocusViewModel) {
             val container = (androidx.compose.ui.platform.LocalContext.current.applicationContext
                 as com.artoffocus.app.ArtOfFocusApp).container
             val photoViewModel: com.artoffocus.app.ui.photos.PhotoLibraryViewModel = viewModel(
-                factory = com.artoffocus.app.ui.photos.PhotoLibraryViewModel.Factory(container.photoStore),
+                factory = com.artoffocus.app.ui.photos.PhotoLibraryViewModel.Factory(
+                    container.photoStore,
+                    container.museumRepository,
+                    container.artworkRepository,
+                ),
             )
             com.artoffocus.app.ui.photos.PhotoLibrarySheet(
                 viewModel = photoViewModel,

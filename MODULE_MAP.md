@@ -78,12 +78,18 @@ to a global swap; per-painting user art needed the model to carry state that
 is not derivable from the seed.
 
 Decisions worth keeping:
-- **Two contexts, two crop rules.** During a session the frame takes the
-  picture's own aspect ratio (nothing cropped, no tile over empty ground);
-  in the Museum cards stay a uniform 4:5 and the photo is centre-cropped.
+- **The card is always 4:5**, in a session and in the Museum alike, and a
+  photo fills it (`ContentScale.Crop`) rather than fitting inside it. Letting
+  the frame take the picture's aspect ratio was tried and reverted: a wide
+  photo turned the card into a letterbox and crushed the tiles into strips.
   The crop is display-only — the stored file is never altered.
 - **Pictures are never consumed.** One picture can back any number of
   paintings; abandoning a painting leaves it in the library.
+- **A picture a painting depends on cannot be deleted.** The rule is
+  `domain/focus/PhotoUsage.kt`, covering both completed paintings (I12) and
+  the active one (I7); the library shows those tiles as "In your Museum"
+  instead of offering removal. Locking is about deletion only — a locked
+  picture stays selectable.
 - **Photos are copied into app-private storage** at import, never referenced
   by gallery URI (revocable grant, does not survive reboot) — I12.
 - **Photo paintings are not synced.** The `paintings` table carries no image,
