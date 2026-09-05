@@ -30,3 +30,27 @@ fun formatInviteCode(code: String): String {
 
 /** Group standings and the friends board must order identically — delegates to [rankFriends]. */
 fun rankStandings(members: List<Friend>, sortBy: SortBy): List<Friend> = rankFriends(members, sortBy)
+
+/** Uppercases and strips the spacing/hyphen people add when reading a code aloud. */
+fun normaliseInviteCode(raw: String): String = raw.trim().uppercase().replace(Regex("[\\s-]"), "")
+
+fun isValidInviteCode(raw: String): Boolean {
+    val code = normaliseInviteCode(raw)
+    return code.length == INVITE_CODE_LENGTH && code.all { it in CODE_ALPHABET }
+}
+
+enum class GroupNameProblem { EMPTY, TOO_LONG }
+
+fun groupNameProblem(raw: String): GroupNameProblem? {
+    val name = raw.trim()
+    return when {
+        name.isEmpty() -> GroupNameProblem.EMPTY
+        name.length > MAX_GROUP_NAME -> GroupNameProblem.TOO_LONG
+        else -> null
+    }
+}
+
+fun describeGroupNameProblem(problem: GroupNameProblem): String = when (problem) {
+    GroupNameProblem.EMPTY -> "Give the group a name."
+    GroupNameProblem.TOO_LONG -> "Group names are at most $MAX_GROUP_NAME characters."
+}

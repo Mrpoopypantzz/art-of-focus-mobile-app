@@ -7,6 +7,8 @@ import com.artoffocus.app.data.repository.AccountRepository
 import com.artoffocus.app.data.repository.ArtworkRepository
 import com.artoffocus.app.data.repository.AuthRepository
 import com.artoffocus.app.data.repository.FocusSetupRepository
+import com.artoffocus.app.data.repository.FriendsRepository
+import com.artoffocus.app.data.repository.GroupsRepository
 import com.artoffocus.app.data.repository.MuseumRepository
 import com.artoffocus.app.data.repository.NotificationPrefsRepository
 import com.artoffocus.app.data.repository.OnboardingRepository
@@ -30,4 +32,6 @@ class AppContainer(context: Context) {
     private val supabaseClient by lazy { createAppSupabaseClient() }
     val authRepository by lazy { AuthRepository(supabaseClient, accountRepository) }
     val syncRepository by lazy { SyncRepository(supabaseClient, museumRepository, profileRepository, accountRepository) }
+    val friendsRepository by lazy { FriendsRepository(supabaseClient) }
+    val groupsRepository by lazy { GroupsRepository(supabaseClient) }
 }

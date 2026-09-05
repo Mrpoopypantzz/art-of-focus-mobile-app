@@ -41,4 +41,6 @@ class AuthRepository(
     }
 
     fun isSignedIn(): Boolean = sessionStatus.value is SessionStatus.Authenticated
+
+    fun currentUserId(): String? = supabase.auth.currentUserOrNull()?.id
 }

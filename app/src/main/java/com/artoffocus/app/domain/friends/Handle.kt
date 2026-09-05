@@ -28,3 +28,13 @@ fun handleProblem(raw: String): HandleProblem? {
 }
 
 fun formatHandle(handle: String): String = "@$handle"
+
+fun isValidHandle(raw: String): Boolean = handleProblem(raw) == null
+
+fun describeHandleProblem(problem: HandleProblem): String = when (problem) {
+    HandleProblem.EMPTY -> "Choose a handle so friends can find you."
+    HandleProblem.TOO_SHORT -> "Handles are at least $MIN_HANDLE characters."
+    HandleProblem.TOO_LONG -> "Handles are at most $MAX_HANDLE characters."
+    HandleProblem.BAD_CHARACTERS -> "Handles use letters, numbers and underscores only."
+    HandleProblem.RESERVED -> "That handle is reserved. Try another."
+}

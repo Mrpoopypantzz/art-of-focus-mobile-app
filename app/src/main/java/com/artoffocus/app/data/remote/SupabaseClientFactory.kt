@@ -18,3 +18,7 @@ fun createAppSupabaseClient(): SupabaseClient = createSupabaseClient(
     install(Auth)
     install(Postgrest)
 }
+
+/** No `local.properties` credentials means every cloud path is a deliberate no-op, same as web's `isBackendConfigured()`. */
+fun isBackendConfigured(): Boolean =
+    BuildConfig.SUPABASE_URL.isNotBlank() && BuildConfig.SUPABASE_ANON_KEY.isNotBlank()
