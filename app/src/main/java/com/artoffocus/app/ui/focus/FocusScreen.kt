@@ -43,6 +43,9 @@ import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import com.artoffocus.app.domain.focus.AUTO_CONTINUE_MS
+import com.artoffocus.app.domain.focus.CANCEL_COUNTDOWN_S
+import com.artoffocus.app.domain.focus.CONTINUE_LOCK_MS
 import com.artoffocus.app.domain.focus.FocusLevel
 import com.artoffocus.app.domain.focus.Painting
 import com.artoffocus.app.domain.focus.SessionState
@@ -55,7 +58,9 @@ import com.artoffocus.app.domain.focus.describeSessionProgress
 import com.artoffocus.app.domain.focus.elapsedMs
 import com.artoffocus.app.domain.focus.formatAway
 import com.artoffocus.app.domain.focus.formatDuration
+import com.artoffocus.app.domain.focus.formatCountdownOf
 import com.artoffocus.app.domain.focus.formatElapsed
+import com.artoffocus.app.domain.focus.formatElapsedOf
 import com.artoffocus.app.domain.focus.layoutFor
 import com.artoffocus.app.domain.focus.pieceCount
 import com.artoffocus.app.domain.focus.restLockRemainingMs
@@ -766,13 +771,20 @@ private fun CancelSheet(cancelCountdown: Int, viewModel: FocusViewModel) {
                     enabled = cancelCountdown == 0,
                     modifier = Modifier.fillMaxWidth(),
                 ) {
-                    Text(if (cancelCountdown > 0) "Cancel in ${cancelCountdown}s" else "Cancel sitting")
+                    Text(
+                        if (cancelCountdown > 0) {
+                            "Cancel in ${formatCountdownOf(cancelCountdown, CANCEL_COUNTDOWN_S)}"
+                        } else {
+                            "Cancel sitting"
+                        },
+                    )
                 }
             }
         },
     ) {
         Text(
-            "Starting is one tap; leaving takes a moment. Give yourself the five seconds — the urge to stop often passes.",
+            "Starting is one tap; leaving takes a moment. Give yourself the " +
+                "$CANCEL_COUNTDOWN_S seconds — the urge to stop often passes.",
             style = MaterialTheme.typography.bodySmall,
         )
     }
@@ -800,7 +812,11 @@ private fun SittingCompleteSheet(state: FocusUiState, viewModel: FocusViewModel,
             }
         },
     ) {
-        Text("Continuing in ${seconds}s unless you take a rest.", style = MaterialTheme.typography.bodySmall)
+        Text(
+            "Continuing in ${formatCountdownOf(seconds, (AUTO_CONTINUE_MS / 1000).toInt())} " +
+                "unless you take a rest.",
+            style = MaterialTheme.typography.bodySmall,
+        )
     }
 }
 
@@ -846,11 +862,25 @@ private fun RestSheet(
                 subtitle = if (done) "Whenever you are ready." else "${formatDuration(session.restMinutes)} away from the easel.",
                 footer = {
                     PrimaryButton(onClick = viewModel::chooseContinue, enabled = !locked, modifier = Modifier.fillMaxWidth()) {
-                        Text(if (locked) "Continue in ${ceil(lockRemaining / 1000.0).toInt()}s" else "Continue to next sitting")
+                        Text(
+                            if (locked) {
+                                val lockSeconds = ceil(lockRemaining / 1000.0).toInt()
+                                "Continue in ${formatCountdownOf(lockSeconds, (CONTINUE_LOCK_MS / 1000).toInt())}"
+                            } else {
+                                "Continue to next sitting"
+                            },
+                        )
                     }
                 },
             ) {
-                Text(if (done) "Rest finished" else "${formatElapsed(remaining)} remaining", style = MaterialTheme.typography.bodyMedium)
+                Text(
+                    if (done) {
+                        "Rest finished"
+                    } else {
+                        "${formatElapsedOf(remaining, session.restMinutes * 60_000L)} remaining"
+                    },
+                    style = MaterialTheme.typography.bodyMedium,
+                )
                 if (locked) {
                     androidx.compose.foundation.layout.Spacer(Modifier.height(AppSpacing.s2))
                     Text("Settle in first — a rest cut short is not a rest.", style = MaterialTheme.typography.bodySmall)

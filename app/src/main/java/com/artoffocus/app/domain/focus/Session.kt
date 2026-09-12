@@ -37,6 +37,13 @@ const val CONTINUE_LOCK_MS: Long = 60_000
 /** F5.1 — UI-timer only, never session state; only advances while the screen is visible (else I7 would break). */
 const val AUTO_CONTINUE_MS: Long = 60_000
 
+/**
+ * I9 — the friction window before a sitting can be abandoned. Named because three places
+ * need to agree on it: the countdown that counts down, the button that shows "of N", and the
+ * prose that explains why the wait exists. It was previously a bare literal in each.
+ */
+const val CANCEL_COUNTDOWN_S: Int = 5
+
 fun restOptions(): List<Int> = (REST_MIN..REST_MAX step REST_STEP).toList()
 
 /**
@@ -110,6 +117,19 @@ fun formatElapsed(ms: Long): String {
         "%02d:%02d".format(minutes, seconds)
     }
 }
+
+/**
+ * "3s of 5" — a countdown that says what it is counting down from.
+ *
+ * A bare "Cancel in 3s" leaves the user guessing whether the wait is nearly over or barely
+ * started. Every countdown in the app uses this so they read the same way.
+ */
+fun formatCountdownOf(remainingSeconds: Int, totalSeconds: Int): String =
+    "${remainingSeconds}s of $totalSeconds"
+
+/** The same idea for the mm:ss countdowns: "04:12 of 15:00". */
+fun formatElapsedOf(remainingMs: Long, totalMs: Long): String =
+    "${formatElapsed(remainingMs)} of ${formatElapsed(totalMs)}"
 
 fun formatAway(ms: Long): String {
     val totalMinutes = (ms / 60_000).coerceAtLeast(0L)

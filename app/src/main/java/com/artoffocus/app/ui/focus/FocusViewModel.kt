@@ -13,6 +13,7 @@ import com.artoffocus.app.data.repository.SyncRepository
 import com.artoffocus.app.notifications.NotificationScheduler
 import com.artoffocus.app.domain.focus.AUTO_CONTINUE_MS
 import com.artoffocus.app.domain.focus.AWAY_PROMPT_MS
+import com.artoffocus.app.domain.focus.CANCEL_COUNTDOWN_S
 import com.artoffocus.app.domain.focus.IDLE_SESSION
 import com.artoffocus.app.domain.focus.Painting
 import com.artoffocus.app.domain.focus.SessionState
@@ -226,9 +227,9 @@ class FocusViewModel(
 
     fun requestCancel() {
         cancelCountdownJob?.cancel()
-        _state.update { it.copy(cancelCountdown = 5) }
+        _state.update { it.copy(cancelCountdown = CANCEL_COUNTDOWN_S) }
         cancelCountdownJob = viewModelScope.launch {
-            for (remaining in 4 downTo 0) {
+            for (remaining in CANCEL_COUNTDOWN_S - 1 downTo 0) {
                 delay(1000)
                 _state.update { it.copy(cancelCountdown = remaining) }
             }
@@ -277,8 +278,16 @@ class FocusViewModel(
         val now = System.currentTimeMillis()
         val resting = startRest(_state.value.session, minutes, now)
         persistSession(resting)
-        // F14.1 — scheduled for the exact wall-clock rest end; the worker re-checks state before posting.
-        NotificationScheduler.scheduleRestEnd(appContext, now, minutes, _state.value.pieces)
+        // F14.1 — an exact alarm at the wall-clock rest end; the receiver re-checks state before
+        // posting. Keyed by sitting index, which survives the RESTING -> REST_COMPLETE transition
+        // (restStartedAt does not, which is why this used to fire only when the app was closed).
+        NotificationScheduler.scheduleRestEnd(
+            context = appContext,
+            restStartedAt = now,
+            restMinutes = minutes,
+            pieces = _state.value.pieces,
+            sittingIndex = resting.sittingIndex,
+        )
     }
 
     fun chooseContinue() {

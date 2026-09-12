@@ -7,10 +7,15 @@ import com.artoffocus.app.domain.profile.dayNumber
  * Owns M8/I7's notification consequence: notifications never fire during a sitting. On the
  * web this module also carried a platform-support detector (iOS PWA install prompts, Chrome
  * Notification Trigger checks) because web notifications from a background tab are
- * unreliable. A native Android app has no equivalent problem — WorkManager/AlarmManager
- * notifications are reliable regardless of app state — so that whole platform-detection
- * concern is dropped here; every kind below can be treated as reliable on Android. This is a
- * genuine product improvement over the web version, not a missing feature.
+ * unreliable. Android has no equivalent problem, so that platform-detection concern is
+ * dropped here.
+ *
+ * "Reliable" needs one qualification, because an earlier version of this comment overstated
+ * it. REST_END is scheduled as an exact alarm and does arrive on time. The other three ride
+ * on WorkManager, which is deliberately inexact and may run late under Doze — fine for a
+ * daily nudge, not for a rest timer. Separately, every kind is silently dropped when the
+ * POST_NOTIFICATIONS permission has not been granted (see AppNotifier.canPost), which is a
+ * real delivery gap on a fresh install, not a theoretical one.
  */
 
 enum class NotificationKind { REST_END, ACHIEVEMENT, DAILY_CALL, STREAK_RISK }

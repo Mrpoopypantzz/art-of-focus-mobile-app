@@ -6,6 +6,13 @@
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.INTERNET" />
 
+    <!-- F14.1 — the rest-end alarm must fire on time; WorkManager's inexact delay could slip
+         by minutes under Doze. USE_EXACT_ALARM is the calendar/alarm-clock variant: granted at
+         install, no runtime prompt. SCHEDULE_EXACT_ALARM is declared alongside it only to cover
+         API 31/32, where USE_EXACT_ALARM does not exist yet. -->
+    <uses-permission android:name="android.permission.USE_EXACT_ALARM" android:minSdkVersion="33" />
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" android:maxSdkVersion="32" />
+
     <application
         android:name=".ArtOfFocusApp"
         android:allowBackup="true"
@@ -32,6 +39,12 @@
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
             </intent-filter>
         </receiver>
+
+        <!-- F14.1 — target of the exact rest-end alarm. Not exported: only AlarmManager,
+             acting on our own PendingIntent, ever delivers to it. -->
+        <receiver
+            android:name=".notifications.RestEndReceiver"
+            android:exported="false" />
 
         <!-- We provide WorkManager's Configuration ourselves (Configuration.Provider on
              ArtOfFocusApp) so workers can be constructed with AppContainer's repositories;
