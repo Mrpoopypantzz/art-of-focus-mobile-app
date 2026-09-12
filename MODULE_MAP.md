@@ -70,12 +70,21 @@ Status: **built** (assignment + division + reveal + completion). No cabinet-
 opening ceremony animation (the source web app built one, then reverted it —
 see its MODULE_MAP D47; not attempted here either).
 
-A painting is either a **generated gradient** (the deterministic seeded scheme
-shared with the source app, `domain/focus/Artwork.kt`) or **one of the user's
-own pictures**. `Painting.imageRef` distinguishes them: null means gradient.
-The earlier note that "swapping in real art only touches `PALETTES`" applied
-to a global swap; per-painting user art needed the model to carry state that
-is not derivable from the seed.
+A painting has one of **three sources**, recorded on `Painting.source`
+(`ArtSource`): a **community painting** (public-domain art, the default), **one
+of the user's own pictures**, or a **generated gradient**. `imageRef` carries
+the image for the first two and is null for the third.
+
+The source is stored rather than inferred. It used to be read off
+`imageRef != null`, which worked only while "has an image" and "is the user's
+photo" meant the same thing; community art broke that, and the Pictures library
+would have claimed to own downloaded museum art. The earlier note that
+"swapping in real art only touches `PALETTES`" applied to a global swap;
+per-painting art needed the model to carry state not derivable from the seed.
+
+**Gradients are the fallback, not the offer.** They appear only when no
+community art is cached and the device is offline — a first run with no
+signal. Everywhere else the user gets real art.
 
 Decisions worth keeping:
 - **The card is always 4:5**, in a session and in the Museum alike, and a
@@ -95,14 +104,31 @@ Decisions worth keeping:
 - **Photo paintings are not synced.** The `paintings` table carries no image,
   so a pushed photo painting would read back elsewhere as a gradient.
 - **Coil** (`io.coil-kt:coil-compose`) is the app's image loader.
-- Two further painting sources are planned and deliberately not built:
-  community paintings (needs an upload pipeline and moderation) and friend
-  gifts (accepted unseen, unveiled by focusing — needs Supabase Storage and
-  the D6 auth work).
+- **Community art never enters the timer path.** `CommunityArtRepository.peek`
+  reads the local cache only, so a sitting starts instantly and offline (I7).
+  `topUp` is the sole network call and runs at launch and after a painting
+  completes — never during a session. Images are downloaded into app-private
+  storage for the same reason photos are: a painting whose artwork is a remote
+  URL is one outage away from an empty frame (I12).
+- **The source is the Art Institute of Chicago** (`data/remote/CommunityArtApi.kt`),
+  chosen for needing no key or account and for releasing its image data as CC0.
+  Artist and year are shown as a credit regardless, because crediting an artist
+  is right even when the licence does not require it. That file is the only one
+  that knows the API exists.
+- **The cache is not the Museum.** `CommunityArtCache` is a disposable JSON
+  index plus image files; losing it costs a re-download. It deliberately sits
+  outside the Room database, where I12 and a migration would apply. A used
+  painting is marked, never deleted — a completed painting still points at it.
+- Friend gifts remain planned and unbuilt (accepted unseen, unveiled by
+  focusing — needs Supabase Storage and the D6 auth work). Community
+  *contribution* (the user submitting their own work) is likewise unbuilt: the
+  Pictures tab states the rules it will follow, and offers no upload.
 
-Room is at **schema version 2**; `data/local/Migrations.kt` holds the first
-migration (adds the nullable `photoUri` column). `fallbackToDestructiveMigration`
-must never be used — it drops the museum (I12).
+Room is at **schema version 3**; `data/local/Migrations.kt` holds both
+migrations (v2 adds the nullable `photoUri` column; v3 adds `source` and
+`credit`, back-filling existing rows to `OWN_PHOTO` where an image is present
+and `GENERATED` otherwise). `fallbackToDestructiveMigration` must never be used
+— it drops the museum (I12).
 
 ---
 

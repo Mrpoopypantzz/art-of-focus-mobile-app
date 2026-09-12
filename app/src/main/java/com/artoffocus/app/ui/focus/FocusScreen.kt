@@ -74,6 +74,7 @@ import com.artoffocus.app.domain.focus.totalAnchors
 import com.artoffocus.app.ui.common.AppSheet
 import com.artoffocus.app.ui.common.DangerButton
 import com.artoffocus.app.ui.common.PaintingArt
+import com.artoffocus.app.ui.common.PillToggleRow
 import com.artoffocus.app.ui.common.PrimaryButton
 import com.artoffocus.app.ui.common.DeskMood
 import com.artoffocus.app.ui.common.DeskState
@@ -84,6 +85,7 @@ import com.artoffocus.app.ui.theme.AppColors
 import com.artoffocus.app.ui.theme.AppRadius
 import com.artoffocus.app.ui.theme.AppSpacing
 import com.artoffocus.app.ui.theme.EyebrowStyle
+import com.artoffocus.app.ui.theme.FrauncesFamily
 import com.artoffocus.app.ui.theme.StatValueStyle
 import com.artoffocus.app.ui.theme.screenPadding
 import kotlin.math.abs
@@ -93,7 +95,6 @@ import kotlin.math.ceil
 fun FocusScreen(viewModel: FocusViewModel) {
     val state by viewModel.state.collectAsState()
     var setupSheetOpen by remember { mutableStateOf(false) }
-    var picturesSheetOpen by remember { mutableStateOf(false) }
 
     Box(modifier = Modifier.fillMaxSize()) {
         if (state.isLoading) return@Box
@@ -111,7 +112,6 @@ fun FocusScreen(viewModel: FocusViewModel) {
                         state = state,
                         viewModel = viewModel,
                         onOpenSetup = { setupSheetOpen = true },
-                        onOpenPictures = { picturesSheetOpen = true },
                     )
                     else -> RunningContent(state = state, viewModel = viewModel)
                 }
@@ -130,26 +130,6 @@ fun FocusScreen(viewModel: FocusViewModel) {
                     viewModel.startFocusSession()
                     setupSheetOpen = false
                 },
-            )
-        }
-
-        if (picturesSheetOpen) {
-            val container = (androidx.compose.ui.platform.LocalContext.current.applicationContext
-                as com.artoffocus.app.ArtOfFocusApp).container
-            val photoViewModel: com.artoffocus.app.ui.photos.PhotoLibraryViewModel = viewModel(
-                factory = com.artoffocus.app.ui.photos.PhotoLibraryViewModel.Factory(
-                    container.photoStore,
-                    container.museumRepository,
-                    container.artworkRepository,
-                ),
-            )
-            com.artoffocus.app.ui.photos.PhotoLibrarySheet(
-                viewModel = photoViewModel,
-                onChoose = { ref ->
-                    picturesSheetOpen = false
-                    viewModel.startFocusSession(imageRef = ref)
-                },
-                onDismiss = { picturesSheetOpen = false },
             )
         }
 
@@ -256,7 +236,6 @@ private fun IdleContent(
     state: FocusUiState,
     viewModel: FocusViewModel,
     onOpenSetup: () -> Unit,
-    onOpenPictures: () -> Unit,
 ) {
     val pieces = state.pieces
     val painting = state.painting
@@ -307,6 +286,20 @@ private fun IdleContent(
                 style = MaterialTheme.typography.bodySmall,
                 color = AppColors.TextFaint,
             )
+
+            // The curiosity hook: enough to intrigue, never the title. Absent when there is
+            // nothing truthful to say — a gradient fallback has no era to hint at.
+            state.hint?.let { hint ->
+                androidx.compose.foundation.layout.Spacer(Modifier.height(AppSpacing.s3))
+                Text(
+                    hint,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = AppColors.TextDim,
+                    fontFamily = FrauncesFamily,
+                    fontStyle = androidx.compose.ui.text.font.FontStyle.Italic,
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                )
+            }
         }
 
         // Fixed, not flexible: the caption belongs to the canvas above it, and the action
@@ -334,11 +327,14 @@ private fun IdleContent(
                 Text("Abandon this painting", color = AppColors.TextDim, style = MaterialTheme.typography.bodySmall)
             }
         } else {
+            androidx.compose.foundation.layout.Spacer(Modifier.height(AppSpacing.s3))
+            ArtSourceChoice(
+                choice = state.artChoice,
+                hasPicture = state.pendingPicture != null,
+                onSelect = viewModel::selectArtChoice,
+            )
             androidx.compose.foundation.layout.Spacer(Modifier.height(AppSpacing.s2))
-            Row(horizontalArrangement = Arrangement.spacedBy(AppSpacing.s4)) {
-                TextButton(onClick = onOpenSetup) { Text("Change tempo") }
-                TextButton(onClick = onOpenPictures) { Text("Your pictures") }
-            }
+            TextButton(onClick = onOpenSetup) { Text("Change tempo") }
         }
 
         androidx.compose.foundation.layout.Spacer(Modifier.height(AppSpacing.s6))
@@ -787,6 +783,39 @@ private fun CancelSheet(cancelCountdown: Int, viewModel: FocusViewModel) {
                 "$CANCEL_COUNTDOWN_S seconds — the urge to stop often passes.",
             style = MaterialTheme.typography.bodySmall,
         )
+    }
+}
+
+/**
+ * Where the next painting comes from. Community is the default and the normal case; the
+ * user's own pictures are the alternative.
+ *
+ * Uses the app's shared pill toggle rather than a bespoke control, so it reads as the same
+ * kind of switch as Museum's Wall/Timeline and Profile's section tabs.
+ */
+@Composable
+private fun ArtSourceChoice(
+    choice: ArtChoice,
+    hasPicture: Boolean,
+    onSelect: (ArtChoice) -> Unit,
+) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        PillToggleRow(
+            options = ArtChoice.entries.toList(),
+            selected = choice,
+            labelFor = { if (it == ArtChoice.COMMUNITY) "Community" else "Your picture" },
+            onSelect = onSelect,
+        )
+        // Choosing "Your picture" with nothing picked would silently fall back to a gradient,
+        // so say where the picture comes from rather than letting it surprise them.
+        if (choice == ArtChoice.OWN_PICTURE && !hasPicture) {
+            androidx.compose.foundation.layout.Spacer(Modifier.height(AppSpacing.s1))
+            Text(
+                "Pick one in the Pictures tab first.",
+                style = MaterialTheme.typography.labelSmall,
+                color = AppColors.TextFaint,
+            )
+        }
     }
 }
 

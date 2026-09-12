@@ -2,6 +2,7 @@ package com.artoffocus.app.data.repository
 
 import com.artoffocus.app.data.local.PaintingDao
 import com.artoffocus.app.data.local.PaintingEntity
+import com.artoffocus.app.domain.focus.ArtSource
 import com.artoffocus.app.domain.focus.assignPainting
 import com.artoffocus.app.domain.museum.CompletedPainting
 import com.artoffocus.app.domain.museum.paintingKey
@@ -28,8 +29,10 @@ class MuseumRepository(private val dao: PaintingDao) {
                 pieces = record.pieces,
                 startedAt = record.startedAt,
                 completedAt = record.completedAt,
-                // Null for a gradient painting; the user's picture for a photo-backed one.
+                // Null for a gradient painting; an image path for a photo or community one.
                 photoUri = record.painting.imageRef,
+                source = record.painting.source.name,
+                credit = record.painting.credit,
             ),
         )
     }
@@ -50,19 +53,38 @@ class MuseumRepository(private val dao: PaintingDao) {
     /** Sync bookkeeping only — never touches the earned painting content (I12). */
     suspend fun markSynced(localId: Long, syncedAt: Long) = dao.markSynced(localId, syncedAt)
 
+    /**
+     * Tolerant on purpose. An unknown value (a row from a future version, or a corrupted one)
+     * reads as GENERATED, which always renders — I12 means a museum row must survive being
+     * misunderstood, not be dropped for it.
+     */
+    private fun PaintingEntity.parseSource(raw: String): ArtSource {
+        val parsed = runCatching { ArtSource.valueOf(raw) }.getOrDefault(ArtSource.GENERATED)
+        // A source that promises an image without one would render an empty frame. The
+        // gradient is the honest thing to show instead.
+        return if (parsed != ArtSource.GENERATED && photoUri == null) ArtSource.GENERATED else parsed
+    }
+
     private fun PaintingEntity.toDomainOrNull(): CompletedPainting? = runCatching {
         CompletedPainting(
             // A gradient painting is still re-derived from the seed (deterministic hash)
             // rather than trusted from a possibly-stale stored title column.
             //
-            // A photo-backed painting cannot be: its picture and the name the user gave it
+            // A painting with an image cannot be: its picture, and a real artist's title,
             // are not recoverable from a hash, so for those rows the stored columns ARE the
             // source of truth. The seed is still carried, because identity is (startedAt,
             // seed) regardless of what the painting looks like.
-            painting = if (photoUri != null) {
-                assignPainting(seed).copy(title = title, imageRef = photoUri)
-            } else {
-                assignPainting(seed)
+            //
+            // An unrecognised source falls back to GENERATED rather than throwing — a row
+            // written by a future version must never take the whole museum down with it.
+            painting = when (val artSource = parseSource(source)) {
+                ArtSource.GENERATED -> assignPainting(seed)
+                else -> assignPainting(seed).copy(
+                    title = title,
+                    imageRef = photoUri,
+                    source = artSource,
+                    credit = credit,
+                )
             },
             totalMinutes = totalMinutes,
             sittingMinutes = sittingMinutes,

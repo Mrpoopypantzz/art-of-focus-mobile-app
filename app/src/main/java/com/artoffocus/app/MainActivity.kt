@@ -30,6 +30,8 @@ import com.artoffocus.app.ui.friends.FriendsScreen
 import com.artoffocus.app.ui.friends.FriendsViewModel
 import com.artoffocus.app.ui.museum.MuseumScreen
 import com.artoffocus.app.ui.museum.MuseumViewModel
+import com.artoffocus.app.ui.photos.PhotoLibraryScreen
+import com.artoffocus.app.ui.photos.PhotoLibraryViewModel
 import com.artoffocus.app.ui.profile.ProfileScreen
 import com.artoffocus.app.ui.profile.ProfileViewModel
 import com.artoffocus.app.ui.common.TabBar
@@ -40,6 +42,7 @@ import com.artoffocus.app.ui.theme.AppColors
 private enum class Tab(val label: String, val glyph: String) {
     FOCUS("Focus", "◈"),
     MUSEUM("Museum", "▤"),
+    PICTURES("Pictures", "❖"),
     PROFILE("Profile", "◍"),
     FRIENDS("Friends", "◎"),
 }
@@ -93,7 +96,17 @@ private fun AppShell(container: AppContainer) {
             container.artworkRepository,
             container.museumRepository,
             container.syncRepository,
+            container.communityArtRepository,
             appContext,
+        ),
+    )
+    // Shell-scoped so a picture chosen in the Pictures tab is still there when the Focus tab
+    // asks for it.
+    val photoLibraryViewModel: PhotoLibraryViewModel = viewModel(
+        factory = PhotoLibraryViewModel.Factory(
+            container.photoStore,
+            container.museumRepository,
+            container.artworkRepository,
         ),
     )
     val museumViewModel: MuseumViewModel = viewModel(factory = MuseumViewModel.Factory(container.museumRepository))
@@ -138,6 +151,15 @@ private fun AppShell(container: AppContainer) {
             when (tab) {
                 Tab.FOCUS -> FocusScreen(focusViewModel)
                 Tab.MUSEUM -> MuseumScreen(museumViewModel)
+                Tab.PICTURES -> PhotoLibraryScreen(
+                    viewModel = photoLibraryViewModel,
+                    // Choosing a picture never starts a timer — it lines one up. Starting is
+                    // always the user's own tap on Begin, on the Focus tab.
+                    onChoose = { ref ->
+                        focusViewModel.choosePicture(ref)
+                        tab = Tab.FOCUS
+                    },
+                )
                 Tab.PROFILE -> ProfileScreen(profileViewModel)
                 Tab.FRIENDS -> FriendsScreen(friendsViewModel)
             }

@@ -16,13 +16,19 @@ import com.artoffocus.app.domain.museum.CompletedPainting
  * Pure so the rule can be tested directly, and so the policy lives here rather than in a
  * screen. Locking concerns deletion only — a locked picture stays selectable, because a
  * picture is never consumed by being used.
+ *
+ * Only the user's OWN_PHOTO paintings count. Community art also carries an image, but it is
+ * not in the user's library and must never appear there as something "in your Museum" —
+ * that is the whole reason a painting records its source rather than inferring it from
+ * whether an image is present.
  */
 fun picturesInUse(
     completed: List<CompletedPainting>,
-    activeImageRef: String?,
+    active: Painting?,
 ): Set<String> = buildSet {
-    completed.forEach { record -> record.painting.imageRef?.let { add(pictureKey(it)) } }
-    activeImageRef?.let { add(pictureKey(it)) }
+    (completed.map { it.painting } + listOfNotNull(active))
+        .filter { it.source == ArtSource.OWN_PHOTO }
+        .forEach { painting -> painting.imageRef?.let { add(pictureKey(it)) } }
 }
 
 /** True when the picture may be deleted — that is, when no painting depends on it. */

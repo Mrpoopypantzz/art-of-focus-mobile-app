@@ -56,7 +56,7 @@ class PhotoLibraryViewModel(
 
     private suspend fun currentlyInUse(): Set<String> = picturesInUse(
         completed = museumRepository.getAll(),
-        activeImageRef = artworkRepository.loadActive()?.imageRef,
+        active = artworkRepository.loadActive(),
     )
 
     fun import(uri: Uri) {

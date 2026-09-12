@@ -258,11 +258,20 @@ covered too — losing it mid-session would destroy work in progress (I7).
 any new caller must make the same check. Locking concerns deletion only: a
 locked picture stays selectable, because using a picture never consumes it.
 
-**Schema changes stay additive.** The database is at version 2;
-`data/local/Migrations.kt` adds the nullable `photoUri` column and touches no
-existing data. `fallbackToDestructiveMigration()` drops the table and must
-never be used — the failure mode of a missing migration is a loud crash, which
-is correct, and far preferable to a silent wipe.
+**Only the user's own pictures are locked.** `picturesInUse` filters on
+`ArtSource.OWN_PHOTO`. Community art also carries an `imageRef`, but it lives
+in the disposable art cache, not the user's library — locking on it would make
+the Pictures tab claim files it does not own. A cached community painting that
+has been used is marked, never deleted, for the same I12 reason: a completed
+painting still points at that image.
+
+**Schema changes stay additive.** The database is at version 3;
+`data/local/Migrations.kt` adds the nullable `photoUri` column (v2) and the
+`source` / `credit` columns (v3), touching no existing data — v3's back-fill
+only states what was already true of each row (an image could previously only
+be the user's own photo). `fallbackToDestructiveMigration()` drops the table
+and must never be used — the failure mode of a missing migration is a loud
+crash, which is correct, and far preferable to a silent wipe.
 
 ---
 

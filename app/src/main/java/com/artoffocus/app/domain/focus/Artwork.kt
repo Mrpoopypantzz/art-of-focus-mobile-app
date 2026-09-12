@@ -27,19 +27,44 @@ val PALETTES: List<Palette> = listOf(
 const val PAINTING_COUNT: Int = 8
 
 /**
- * [imageRef] is the user's own picture when set, and null for the generated gradient the
+ * Where a painting's artwork came from.
+ *
+ * This used to be inferred from `imageRef != null`, which was only ever true while "has an
+ * image" and "is the user's own photo" meant the same thing. Community art broke that: the
+ * Pictures library would have treated downloaded museum art as a local file it owned, listed
+ * it, and locked it as "in your Museum". The distinction is a fact about the painting, so it
+ * is stored rather than guessed.
+ */
+enum class ArtSource {
+    /** The seeded gradient the palettes describe. Offline fallback only — never promoted. */
+    GENERATED,
+
+    /** A picture the user imported. Lives in PhotoStore and is protected from deletion (I12). */
+    OWN_PHOTO,
+
+    /** Public-domain art, downloaded and cached locally before a sitting ever starts (I7). */
+    COMMUNITY,
+}
+
+/**
+ * [imageRef] is the artwork's image when set, and null for the generated gradient the
  * palettes describe. It is deliberately outside identity: a painting is still identified by
  * (startedAt, seed) everywhere — locally, in the Supabase unique constraint, and in the sync
- * conflict target — so attaching a photo never changes which painting a record *is*.
+ * conflict target — so attaching an image never changes which painting a record *is*.
  *
  * Kept as an opaque reference rather than a typed local path so the same field can carry a
- * community painting or a friend's gift later without another schema change.
+ * community painting or a friend's gift without another schema change. [source] says which
+ * of those it is; [credit] carries the artist and year for community work, and is null for
+ * everything else because a gradient has no artist and the user needs no credit for their
+ * own photograph.
  */
 data class Painting(
     val id: String,
     val title: String,
     val seed: Long,
     val imageRef: String? = null,
+    val source: ArtSource = ArtSource.GENERATED,
+    val credit: String? = null,
 )
 
 /** Deterministic 32-bit hash (two-round Murmur-like finalizer) — same seed always yields the same painting. */
