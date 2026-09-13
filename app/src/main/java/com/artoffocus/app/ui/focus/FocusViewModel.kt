@@ -8,10 +8,16 @@ import com.artoffocus.app.data.repository.ChosenArtwork
 import com.artoffocus.app.data.repository.CommunityArtRepository
 import com.artoffocus.app.data.repository.FocusSetupRepository
 import com.artoffocus.app.data.repository.MuseumRepository
+import com.artoffocus.app.data.repository.NotificationPrefsRepository
 import com.artoffocus.app.data.repository.FocusSetup
 import android.content.Context
 import com.artoffocus.app.data.repository.SessionRepository
 import com.artoffocus.app.data.repository.SyncRepository
+import com.artoffocus.app.domain.achievements.Achievement
+import com.artoffocus.app.domain.achievements.earnedAchievements
+import com.artoffocus.app.domain.achievements.newlyEarned
+import com.artoffocus.app.domain.profile.statistics
+import com.artoffocus.app.notifications.AppNotifier
 import com.artoffocus.app.notifications.NotificationScheduler
 import com.artoffocus.app.domain.focus.ArtSource
 import com.artoffocus.app.domain.focus.AUTO_CONTINUE_MS
@@ -87,6 +93,7 @@ class FocusViewModel(
     private val museumRepository: MuseumRepository,
     private val syncRepository: SyncRepository,
     private val communityArtRepository: CommunityArtRepository,
+    private val notificationPrefsRepository: NotificationPrefsRepository,
     private val appContext: Context,
 ) : ViewModel() {
 
@@ -239,8 +246,13 @@ class FocusViewModel(
             startedAt = current.activePaintingStartedAt,
             completedAt = now,
         )
+        // Earned achievements BEFORE this painting lands, so the ones it causes can be told
+        // apart from the ones already held. Read before the write, or everything looks new.
+        val earnedBefore = earnedAchievements(statistics(museumRepository.getAll(), now)).toSet()
+
         // I12 — the museum record is written before the active slot is cleared.
         museumRepository.recordCompletion(record)
+        notifyNewAchievements(earnedBefore, now)
         artworkRepository.clearActive()
         sessionRepository.clear()
         // M6 — the second of web's two sync moments. Deliberately after the local write and
@@ -254,6 +266,24 @@ class FocusViewModel(
         // up what comes next so the idle screen has a hint ready.
         refillCommunityArt()
         lineUpNextPainting()
+    }
+
+    /**
+     * Posts a notification for each achievement this painting just earned.
+     *
+     * `notifyAchievement` existed with no caller at all, so the "Achievement earned" toggle in
+     * Profile controlled nothing while the sign-in copy promised it would. This is what makes
+     * that promise true.
+     *
+     * Derived by diffing earned-before against earned-after rather than by any new rule:
+     * [earnedAchievements] stays the single source of truth for what counts as earned, so I15
+     * ("an earned achievement is never removed") is untouched — nothing here can un-earn one.
+     */
+    private suspend fun notifyNewAchievements(earnedBefore: Set<Achievement>, now: Long) {
+        if (!notificationPrefsRepository.load().achievement) return
+        val earnedAfter = earnedAchievements(statistics(museumRepository.getAll(), now))
+        newlyEarned(earnedBefore, earnedAfter)
+            .forEach { AppNotifier.notifyAchievement(appContext, it.title) }
     }
 
     fun acknowledgePaintingCompletion() {
@@ -469,6 +499,7 @@ class FocusViewModel(
         private val museumRepository: MuseumRepository,
         private val syncRepository: SyncRepository,
         private val communityArtRepository: CommunityArtRepository,
+        private val notificationPrefsRepository: NotificationPrefsRepository,
         private val appContext: Context,
     ) : ViewModelProvider.Factory {
         override fun <T : ViewModel> create(modelClass: Class<T>): T {
@@ -480,6 +511,7 @@ class FocusViewModel(
                 museumRepository,
                 syncRepository,
                 communityArtRepository,
+                notificationPrefsRepository,
                 appContext,
             ) as T
         }

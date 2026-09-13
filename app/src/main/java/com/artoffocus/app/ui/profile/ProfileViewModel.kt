@@ -47,6 +47,8 @@ data class ProfileUiState(
     val handle: String? = null,
     val handleBusy: Boolean = false,
     val handleNotice: String? = null,
+    /** "Restored 7 paintings…" after a sign-in that brought work back from the account. */
+    val syncNotice: String? = null,
 )
 
 /** F10 — identity, editable focus level (I4, mid-painting-safe), statistics/achievements (F10.7/D35 — finished paintings only). */
@@ -138,7 +140,17 @@ class ProfileViewModel(
             }.onSuccess {
                 // M6 — one of the two moments web syncs: signing in is when a device's local
                 // work first has somewhere to go. Never during a session (I7).
+                //
+                // Push first, then pull: send what only this device has, then bring back what
+                // it is missing. Pull is additive only, so neither direction can cost a
+                // painting (I12) -- see SyncRepository.pullRemoteWork.
                 syncRepository.pushLocalWork()
+                val pull = syncRepository.pullRemoteWork()
+                if (pull.pulled > 0) {
+                    _state.value = _state.value.copy(
+                        syncNotice = "Restored ${pull.pulled} painting${if (pull.pulled == 1) "" else "s"} from your account.",
+                    )
+                }
             }.onFailure { e ->
                 _state.value = _state.value.copy(authError = e.message ?: "Sign-in failed")
             }

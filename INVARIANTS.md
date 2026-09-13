@@ -159,13 +159,18 @@ The user decides; the app never silently chooses.
 Consequences:
 - `lastSeenAt` is recorded on `ON_STOP` **only to measure the gap**, never to
   pause.
-- **Notifications never fire during a sitting.** [RestEndWorker](app/src/main/java/com/artoffocus/app/notifications/RestEndWorker.kt)
+- **Notifications never fire during a sitting.** [RestEndReceiver](app/src/main/java/com/artoffocus/app/notifications/RestEndReceiver.kt)
   re-checks session state before posting; the daily/streak workers explicitly
   return early if a sitting is `RUNNING`.
-- Local storage (Room + DataStore) is the source of truth. Supabase, once
-  configured, only mirrors it — sync happens on sign-in and after painting
-  completion, never inside the timer's path. The app must work fully offline
-  with no account.
+- Local storage (Room + DataStore) is the source of truth. Supabase only
+  mirrors it — sync happens on sign-in and after painting completion, never
+  inside the timer's path. Both directions obey this: `pushLocalWork` and
+  `pullRemoteWork` are called from sign-in and completion only. The app must
+  work fully offline with no account.
+- **Community art is fetched ahead of time, never on demand.**
+  `CommunityArtRepository.peek` reads the local cache alone, so starting a
+  sitting never waits on a request; `topUp` is the only network call and runs
+  well away from a session.
 - **Choosing a picture happens before a session, never during one.** Your
   Pictures is reachable only from the idle screen, and a picture is copied to
   private storage at import — so no file I/O and no picker sits in the timer's
@@ -265,13 +270,36 @@ the Pictures tab claim files it does not own. A cached community painting that
 has been used is marked, never deleted, for the same I12 reason: a completed
 painting still points at that image.
 
-**Schema changes stay additive.** The database is at version 3;
-`data/local/Migrations.kt` adds the nullable `photoUri` column (v2) and the
-`source` / `credit` columns (v3), touching no existing data — v3's back-fill
-only states what was already true of each row (an image could previously only
-be the user's own photo). `fallbackToDestructiveMigration()` drops the table
-and must never be used — the failure mode of a missing migration is a loud
-crash, which is correct, and far preferable to a silent wipe.
+**Syncing only ever adds.** Pulling from the server was deliberately not built
+for a long time, because two devices with divergent museums need a merge rule
+and guessing at one risks this invariant. The rule, now that pulling exists
+(`SyncRepository.pullRemoteWork`), is that a pull can only INSERT:
+
+- it goes through `PaintingDao.insert`, which is `OnConflictStrategy.IGNORE`
+  keyed on `paintingKey` ("startedAt:seed"), so a painting already held is
+  skipped rather than rewritten — this relies on the unique index added in v5,
+  whose absence meant the guarantee was previously unenforced;
+- `PaintingDao` exposes no update and no delete at all, so "a pull overwrote my
+  painting" is not a bug to be avoided here — it is unrepresentable;
+- a painting held locally and absent from the server is left untouched.
+
+The server enforces the same shape: `paintings` has SELECT and INSERT policies
+only, so no client can update or delete a completed painting even if it tried.
+
+**Schema changes stay additive.** The database is at version 5;
+`data/local/Migrations.kt` adds the nullable `photoUri` column (v2), the
+`source` / `credit` columns (v3), `remoteUrl` (v4), and the unique index on
+`paintingKey` (v5), touching no existing data — v3's back-fill only states what was already true of each row (an image
+could previously only be the user's own photo).
+`fallbackToDestructiveMigration()` drops the table and must never be used — the
+failure mode of a missing migration is a loud crash, which is correct, and far
+preferable to a silent wipe.
+
+Every migration is covered by an instrumented test
+(`app/src/androidTest/.../MigrationTest.kt`) asserting that every painting
+survives the full v1 -> v4 path. The tests were verified by deliberately
+sabotaging a migration to drop the table and confirming they failed — a green
+migration suite that cannot detect a wipe would be worse than none.
 
 ---
 

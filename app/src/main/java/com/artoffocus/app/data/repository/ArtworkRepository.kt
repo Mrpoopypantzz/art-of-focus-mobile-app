@@ -31,9 +31,10 @@ private data class PaintingDto(
     val imageRef: String? = null,
     val source: String? = null,
     val credit: String? = null,
+    val remoteUrl: String? = null,
 )
 
-private fun Painting.toDto() = PaintingDto(id, title, seed, imageRef, source.name, credit)
+private fun Painting.toDto() = PaintingDto(id, title, seed, imageRef, source.name, credit, remoteUrl)
 
 private fun PaintingDto.toDomain(): Painting {
     // A painting stored before `source` existed can only be a gradient or the user's own
@@ -41,7 +42,7 @@ private fun PaintingDto.toDomain(): Painting {
     // 2->3 database migration back-fills the same conclusion for museum rows.
     val resolved = source?.let { runCatching { ArtSource.valueOf(it) }.getOrNull() }
         ?: if (imageRef != null) ArtSource.OWN_PHOTO else ArtSource.GENERATED
-    return Painting(id, title, seed, imageRef, resolved, credit)
+    return Painting(id, title, seed, imageRef, resolved, credit, remoteUrl)
 }
 
 /**
@@ -55,6 +56,8 @@ data class ChosenArtwork(
     val source: ArtSource,
     val title: String? = null,
     val credit: String? = null,
+    /** Where the image can be fetched again on another device; community art only. */
+    val remoteUrl: String? = null,
 )
 
 /**
@@ -93,6 +96,7 @@ class ArtworkRepository(private val context: Context) {
                 imageRef = artwork.imageRef,
                 source = artwork.source,
                 credit = artwork.credit,
+                remoteUrl = artwork.remoteUrl,
             )
         }
         context.appDataStore.edit { prefs ->

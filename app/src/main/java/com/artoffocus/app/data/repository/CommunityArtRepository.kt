@@ -73,6 +73,7 @@ class CommunityArtRepository(
                 title = candidate.title,
                 credit = candidate.creditLine(),
                 imageBytes = bytes,
+                sourceUrl = candidate.imageUrl,
             )
             if (stored != null) added++
         }
@@ -84,6 +85,7 @@ class CommunityArtRepository(
         source = ArtSource.COMMUNITY,
         title = title,
         credit = credit,
+        remoteUrl = sourceUrl,
     )
 
     private fun RemoteArtwork.creditLine(): String? = listOfNotNull(artist, year)

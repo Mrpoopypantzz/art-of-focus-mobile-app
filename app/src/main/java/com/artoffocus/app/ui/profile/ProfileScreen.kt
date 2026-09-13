@@ -630,6 +630,13 @@ private fun AccountSection(state: ProfileUiState, viewModel: ProfileViewModel) {
         Text(error, style = MaterialTheme.typography.bodySmall)
     }
 
+    // A restore changes the Museum without the user doing anything visible to it, so it is
+    // stated rather than left to be noticed.
+    state.syncNotice?.let { notice ->
+        androidx.compose.foundation.layout.Spacer(Modifier.height(8.dp))
+        Text(notice, style = MaterialTheme.typography.bodySmall, color = AppColors.TextDim)
+    }
+
     // Deliberately outside the when: clearing must be reachable with no account, because the
     // person with no account is the one whose device holds the only copy.
     androidx.compose.foundation.layout.Spacer(Modifier.height(AppSpacing.s2))

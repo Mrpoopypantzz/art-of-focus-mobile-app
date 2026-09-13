@@ -97,6 +97,7 @@ private fun AppShell(container: AppContainer) {
             container.museumRepository,
             container.syncRepository,
             container.communityArtRepository,
+            container.notificationPrefsRepository,
             appContext,
         ),
     )

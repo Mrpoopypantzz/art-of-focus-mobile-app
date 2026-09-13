@@ -66,7 +66,13 @@ class CommunityArtCache(private val context: Context) {
      * written before the index entry, so a crash between the two leaves an orphaned file
      * (harmless, cleaned by [pruneOrphans]) rather than an index pointing at nothing.
      */
-    suspend fun add(remoteId: String, title: String, credit: String?, imageBytes: ByteArray): CachedArtwork? =
+    suspend fun add(
+        remoteId: String,
+        title: String,
+        credit: String?,
+        imageBytes: ByteArray,
+        sourceUrl: String? = null,
+    ): CachedArtwork? =
         withContext(Dispatchers.IO) {
             runCatching {
                 val index = readIndex()
@@ -81,7 +87,7 @@ class CommunityArtCache(private val context: Context) {
                     return@runCatching null
                 }
 
-                val entry = CachedArtwork(remoteId, title, credit, file.absolutePath)
+                val entry = CachedArtwork(remoteId, title, credit, file.absolutePath, sourceUrl = sourceUrl)
                 writeIndex(index + entry)
                 entry
             }.getOrNull()
@@ -152,4 +158,12 @@ data class CachedArtwork(
     val credit: String?,
     val imagePath: String,
     val used: Boolean = false,
+    /**
+     * The public URL the image came from, so a painting made of it can sync and render on
+     * another device — [imagePath] is meaningless anywhere but this phone.
+     *
+     * Defaulted because this is a disposable cache: an entry written before this field existed
+     * reads as null and simply syncs no image, which is lossless rather than wrong.
+     */
+    val sourceUrl: String? = null,
 )

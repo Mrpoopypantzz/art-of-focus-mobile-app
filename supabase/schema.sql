@@ -48,11 +48,33 @@ create table if not exists public.paintings (
   started_at      timestamptz not null,
   completed_at    timestamptz not null,
 
+  -- What the painting is made of. All nullable: every row written before these
+  -- columns existed predates community art, so a null source reads as the
+  -- generated gradient it actually was.
+  --
+  -- source    'GENERATED' | 'OWN_PHOTO' | 'COMMUNITY' (ArtSource on the client).
+  -- credit    Artist and year, for community work only. A gradient has no artist
+  --           and the user needs no credit for their own photograph.
+  -- image_url Where the picture lives, and ONLY ever a public URL:
+  --             COMMUNITY  -> the museum's own hosted image, so the painting
+  --                           renders on any device at no storage cost.
+  --             OWN_PHOTO  -> null, always. Private photos are never uploaded.
+  --             GENERATED  -> null; redrawn from the seed anywhere.
+  source          text,
+  credit          text,
+  image_url       text,
+
   -- Idempotency, matching paintingKey() in museum/domain/museum.ts exactly.
   -- Re-syncing the same museum must never duplicate a painting, and I6 allows
   -- only one active painting at a time, so no two can share a start instant.
   unique (user_id, started_at, seed)
 );
+
+-- Additive migration for a project that already has the table. Safe to re-run:
+-- `if not exists` on each column, and no existing value is touched.
+alter table public.paintings add column if not exists source    text;
+alter table public.paintings add column if not exists credit    text;
+alter table public.paintings add column if not exists image_url text;
 
 alter table public.paintings enable row level security;
 

@@ -65,6 +65,15 @@ data class Painting(
     val imageRef: String? = null,
     val source: ArtSource = ArtSource.GENERATED,
     val credit: String? = null,
+    /**
+     * The public URL [imageRef] was downloaded from, for COMMUNITY work only.
+     *
+     * [imageRef] is a path on one phone and means nothing on another, so this is what lets a
+     * community painting travel: it syncs, and Coil renders a URL exactly as it renders a file.
+     * Null for a gradient (redrawn from the seed) and for the user's own photo, which is never
+     * uploaded anywhere.
+     */
+    val remoteUrl: String? = null,
 )
 
 /** Deterministic 32-bit hash (two-round Murmur-like finalizer) — same seed always yields the same painting. */

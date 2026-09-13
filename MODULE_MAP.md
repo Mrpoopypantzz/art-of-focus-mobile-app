@@ -101,8 +101,12 @@ Decisions worth keeping:
   picture stays selectable.
 - **Photos are copied into app-private storage** at import, never referenced
   by gallery URI (revocable grant, does not survive reboot) — I12.
-- **Photo paintings are not synced.** The `paintings` table carries no image,
-  so a pushed photo painting would read back elsewhere as a gradient.
+- **Community paintings sync; the user's photos deliberately do not.** The
+  `paintings` table carries `source`, `credit` and `image_url`, and `image_url`
+  is only ever a PUBLIC url — the museum's own hosted image. A private photo is
+  never uploaded, so a photo-backed painting restored on another device has its
+  title and times but no picture, and says so rather than showing a broken
+  frame. Uploading private photos is a product decision, not an omission.
 - **Coil** (`io.coil-kt:coil-compose`) is the app's image loader.
 - **Community art never enters the timer path.** `CommunityArtRepository.peek`
   reads the local cache only, so a sitting starts instantly and offline (I7).
@@ -110,11 +114,18 @@ Decisions worth keeping:
   completes — never during a session. Images are downloaded into app-private
   storage for the same reason photos are: a painting whose artwork is a remote
   URL is one outage away from an empty frame (I12).
-- **The source is the Art Institute of Chicago** (`data/remote/CommunityArtApi.kt`),
-  chosen for needing no key or account and for releasing its image data as CC0.
-  Artist and year are shown as a credit regardless, because crediting an artist
-  is right even when the licence does not require it. That file is the only one
-  that knows the API exists.
+- **The source is the Metropolitan Museum of Art** (`data/remote/CommunityArtApi.kt`),
+  chosen for needing no key or account and for marking public-domain work
+  explicitly. Artist and year are credited regardless, because crediting an
+  artist is right even when the licence does not require it. That file is the
+  only one that knows the API exists.
+
+  The Art Institute of Chicago was tried first and dropped: its metadata API is
+  fine, but its IIIF image host sits behind Cloudflare and answers an image
+  request with a bot-challenge HTML page. Twelve of those were cached as `.jpg`
+  and would have rendered as blank frames. Downloads now verify the image magic
+  number and the cache prunes anything that is not really an image, so a cache
+  poisoned by a bad source heals itself.
 - **The cache is not the Museum.** `CommunityArtCache` is a disposable JSON
   index plus image files; losing it costs a re-download. It deliberately sits
   outside the Room database, where I12 and a migration would apply. A used
@@ -124,11 +135,20 @@ Decisions worth keeping:
   *contribution* (the user submitting their own work) is likewise unbuilt: the
   Pictures tab states the rules it will follow, and offers no upload.
 
-Room is at **schema version 3**; `data/local/Migrations.kt` holds both
+Room is at **schema version 5**; `data/local/Migrations.kt` holds all four
 migrations (v2 adds the nullable `photoUri` column; v3 adds `source` and
 `credit`, back-filling existing rows to `OWN_PHOTO` where an image is present
-and `GENERATED` otherwise). `fallbackToDestructiveMigration` must never be used
+and `GENERATED` otherwise; v4 adds `remoteUrl` so a community painting can be
+rendered on another device; v5 adds the unique index on `paintingKey` that
+should have existed from v1 — without it `OnConflictStrategy.IGNORE` had no
+constraint to hit, so `recordCompletion` was never actually idempotent and the
+same painting could be stored twice). `fallbackToDestructiveMigration` must never be used
 — it drops the museum (I12).
+
+Every migration is covered by an instrumented test
+(`app/src/androidTest/.../MigrationTest.kt`) asserting each painting survives
+the whole v1 -> v4 path. Those tests were themselves checked by deliberately
+sabotaging a migration to drop the table and confirming they failed.
 
 ---
 
@@ -155,11 +175,12 @@ verified live:
   `ProfileViewModel.saveLevel`.
 - **F10.3/F10.4** studio/interface customization, default focus environment —
   **not built** (blocked on F6, same as the source app).
-- **F10.5** notification prefs — domain (`domain/notifications/`) and storage
-  (`NotificationPrefsRepository`) exist; no Settings UI toggle yet (currently
-  only editable by changing stored defaults).
-- **F10.6** account auth + clear local cache — `domain/account/Account.kt`
-  and `AccountRepository` exist; no UI yet (pending Supabase wiring).
+- **F10.5** notification prefs — **built.** Four toggles in Profile >
+  Settings, plus the POST_NOTIFICATIONS request and a delivery self-test that
+  reports why a notification did not arrive (`NotificationSection` in
+  `ui/profile/ProfileScreen.kt`).
+- **F10.6** account auth + clear local cache — **built.** Google sign-in,
+  sign-out, and a separately-gated "Clear local data".
 - **F10.7** statistics — `domain/profile/Statistics.kt`, verified live
   (finished paintings only, screen states this scope).
 
@@ -170,9 +191,8 @@ Files: `domain/profile/{Profile,Statistics}.kt`, `domain/achievements/Achievemen
 
 ## M5 — Friends & Groups
 
-Status: **domain logic complete and tested; UI and Supabase wiring pending**
-a configured Supabase project (`supabase/schema.sql` reused as-is — see
-BIG_PICTURE.md).
+Status: **built.** Domain, Supabase wiring and UI are all in place against
+the live project (`supabase/schema.sql` reused as-is — see BIG_PICTURE.md).
 
 - `domain/friends/Handle.kt` — handle validation (length, charset, reserved
   names), exact-match search semantics.
@@ -182,25 +202,35 @@ BIG_PICTURE.md).
   ambiguous characters), delegates ranking to the same function as the
   friends board.
 
-Once Supabase credentials are available: a `data/remote/` package wrapping
-`io.github.jan-tennert.supabase` (already in `build.gradle.kts`) will call
-the schema's RPCs (`find_by_handle`, `claim_handle`, `pending_requests`,
-`create_group`, `join_group`, `group_standings`) exactly as the web client
-does — no backend redesign.
+`data/repository/{FriendsRepository,GroupsRepository}.kt` call the schema's
+RPCs (`find_by_handle`, `claim_handle`, `pending_requests`, `create_group`,
+`join_group`, `group_standings`) exactly as the web client does — no backend
+redesign. `ui/friends/{FriendsViewModel,FriendsScreen}.kt` is the UI; signed
+out it says so plainly rather than showing an empty board.
+
+Note the package is `data/repository/`, not the `data/remote/` this section
+once predicted — remote calls sit alongside the local repositories rather than
+in a separate layer.
 
 ---
 
 ## M6 — Onboarding & Auth
 
-Status: **domain logic complete; UI not yet built.** `domain/onboarding/Onboarding.kt`
-has the three premise-only slides and the `SLIDES -> SETUP -> DONE` state
-machine (skip jumps straight to `DONE`, matching F12.2). `OnboardingRepository`
-persists it. The app currently opens straight to the Focus tab without
-gating on onboarding completion — wiring the actual slide UI and the
-`hasCompletedOnboarding()` gate in `MainActivity` is a follow-up.
+Status: **built.** `domain/onboarding/Onboarding.kt` has the three
+premise-only slides and the `SLIDES -> SETUP -> DONE` state machine (skip jumps
+straight to `DONE`, matching F12.2); `OnboardingRepository` persists it,
+`ui/onboarding/OnboardingScreen.kt` renders it, and `AppRoot` in
+`MainActivity.kt` gates the shell on `isComplete(...)` — the introduction is
+rendered *instead of* the shell, so no session ViewModel or ticker runs behind
+the slides.
 
-`domain/account/Account.kt` has the magic-link account-status state machine
-and `SyncStatus`/`hasUnsyncedWork` logic, pending Supabase wiring (see M5).
+Auth is **Google only** — no email/password and no magic link. An earlier
+version of this section described a magic-link state machine; that approach was
+replaced. `ui/auth/GoogleSignIn.kt` uses Credential Manager and passes the
+hashed nonce to Google while giving Supabase the raw one;
+`data/repository/AuthRepository.kt` exchanges the ID token.
+`domain/account/Account.kt` keeps the account-status and
+`SyncStatus`/`hasUnsyncedWork` logic.
 
 ---
 
@@ -216,28 +246,48 @@ focus-hour milestones (1/10/50/100/500h), completion milestones
 
 ## M8 — Notifications
 
-Status: **built**, not yet live-tested (would require waiting out a real
-rest period or daily/streak interval). `notifications/NotificationChannels.kt`,
-`AppNotifier.kt`, `RestEndWorker.kt`, `DailyReminderWorker.kt`,
-`StreakRiskWorker.kt`, `AppWorkerFactory.kt`, `NotificationScheduler.kt`.
+Status: **built and live-tested on a device.** `notifications/NotificationChannels.kt`,
+`AppNotifier.kt`, `RestEndReceiver.kt`, `DailyReminderWorker.kt`,
+`StreakRiskWorker.kt`, `AppWorkerFactory.kt`, `NotificationScheduler.kt`,
+`DeliveryMessages.kt`.
 
-Unlike the source web app, there is no reliable/best-effort split and no
-platform-support detector — WorkManager delivers all four kinds reliably
-regardless of app or process state. See INVARIANTS.md's I7 native-specific
-note.
+**Rest end is an exact AlarmManager alarm, not a worker.** WorkManager's
+`setInitialDelay` is explicitly inexact and can slip minutes under Doze, which
+for a five-minute rest is the whole feature. `RestEndReceiver` is the target;
+it is keyed on `sittingIndex`, which survives the RESTING -> REST_COMPLETE
+transition. An earlier version keyed on `restStartedAt`, which `completeRest`
+zeroes — so with the app open the check compared 0 against a real timestamp and
+the notification was silently dropped. It fired only when the app was closed.
+Verified by A/B against the pre-fix build on one device.
 
-`RestEndWorker` is scheduled the instant rest starts (`FocusViewModel.chooseRest`)
-and re-validates that the same rest period is still active before posting,
-so a stale notification can't appear after the user already continued or
-cancelled. Daily/streak workers explicitly refuse to fire while a sitting is
-`RUNNING` (I7).
+The alarm is also re-armed after a reboot (`BootRescheduleReceiver`), since
+exact alarms do not survive one; rebooting mid-rest used to lose the
+notification permanently.
+
+The other three kinds ride on WorkManager, which is fine for a daily nudge.
+"Reliable regardless of app state" needs one qualification the earlier text
+lacked: every notification is silently dropped when POST_NOTIFICATIONS has not
+been granted, and Profile's delivery self-test exists to surface exactly that.
+On a fresh install the permission is only ever requested from Profile, so a user
+who never opens that screen gets nothing — a known gap, flagged not fixed.
+
+The small icon is `res/drawable/ic_notification.xml`, a flat monochrome mask.
+It was `android.R.drawable.ic_dialog_info` — a framework dialog asset, which
+stricter OEM skins can refuse to render at all.
+
+Daily/streak workers explicitly refuse to fire while a sitting is `RUNNING`
+(I7). Achievement notifications fire from `FocusViewModel.finishPainting` by
+diffing earned-before against earned-after (`domain/achievements/NewlyEarned.kt`)
+— `notifyAchievement` previously had no caller at all, so the "Achievement
+earned" toggle controlled nothing while the sign-in copy promised it would.
 
 ---
 
 ## Testing
 
 `app/src/test/` mirrors the source web app's `*.test.ts` invariant suites as
-JUnit tests — 78 tests as of the last full run, covering I1 through I15's
+JUnit tests — 130 as of the last full run, plus 5 instrumented migration
+tests (`app/src/androidTest`), covering I1 through I15's
 domain-layer logic (`DurationsTest`, `SessionTest`, `PuzzleTest`,
 `MuseumTest`, `StatisticsTest`, `AchievementsTest`, `HandleTest`,
 `FriendsTest`). Run with:

@@ -33,8 +33,38 @@ class MuseumRepository(private val dao: PaintingDao) {
                 photoUri = record.painting.imageRef,
                 source = record.painting.source.name,
                 credit = record.painting.credit,
+                remoteUrl = record.painting.remoteUrl,
             ),
         )
+    }
+
+    /**
+     * Inserts a painting only if this device does not already hold it, and reports whether it
+     * was genuinely new.
+     *
+     * For the sync pull. [PaintingDao.insert] is `OnConflictStrategy.IGNORE` on `paintingKey`,
+     * so an already-held painting is skipped rather than rewritten — which is what makes
+     * pulling additive and therefore I12-safe. Room returns -1 for the ignored row, and that
+     * is the signal used here; nothing compares or merges content.
+     */
+    suspend fun recordIfAbsent(record: CompletedPainting): Boolean {
+        val rowId = dao.insert(
+            PaintingEntity(
+                paintingKey = paintingKey(record),
+                seed = record.painting.seed,
+                title = record.painting.title,
+                totalMinutes = record.totalMinutes,
+                sittingMinutes = record.sittingMinutes,
+                pieces = record.pieces,
+                startedAt = record.startedAt,
+                completedAt = record.completedAt,
+                photoUri = record.painting.imageRef?.takeIf { !it.startsWith("http") },
+                source = record.painting.source.name,
+                credit = record.painting.credit,
+                remoteUrl = record.painting.remoteUrl,
+            ),
+        )
+        return rowId != -1L
     }
 
     fun observeAll(): Flow<List<CompletedPainting>> = dao.observeAll().map { entities ->
@@ -60,9 +90,16 @@ class MuseumRepository(private val dao: PaintingDao) {
      */
     private fun PaintingEntity.parseSource(raw: String): ArtSource {
         val parsed = runCatching { ArtSource.valueOf(raw) }.getOrDefault(ArtSource.GENERATED)
-        // A source that promises an image without one would render an empty frame. The
-        // gradient is the honest thing to show instead.
-        return if (parsed != ArtSource.GENERATED && photoUri == null) ArtSource.GENERATED else parsed
+        // A source that promises an image without one would render an empty frame, so it reads
+        // as a gradient instead. A remote URL counts as having an image: a painting pulled from
+        // the server has no local file yet and must NOT be downgraded for that -- it renders
+        // straight from the URL.
+        //
+        // The one genuinely imageless case left is the user's own photo pulled onto another
+        // device. It keeps OWN_PHOTO so the Museum can say the picture lives on the other
+        // phone, rather than silently pretending it was always a gradient.
+        val hasImage = photoUri != null || remoteUrl != null
+        return if (parsed == ArtSource.COMMUNITY && !hasImage) ArtSource.GENERATED else parsed
     }
 
     private fun PaintingEntity.toDomainOrNull(): CompletedPainting? = runCatching {
@@ -81,9 +118,12 @@ class MuseumRepository(private val dao: PaintingDao) {
                 ArtSource.GENERATED -> assignPainting(seed)
                 else -> assignPainting(seed).copy(
                     title = title,
-                    imageRef = photoUri,
+                    // Prefer the local file; fall back to the URL for a painting that arrived
+                    // by sync and has never been on this device. Coil renders either.
+                    imageRef = photoUri ?: remoteUrl,
                     source = artSource,
                     credit = credit,
+                    remoteUrl = remoteUrl,
                 )
             },
             totalMinutes = totalMinutes,
