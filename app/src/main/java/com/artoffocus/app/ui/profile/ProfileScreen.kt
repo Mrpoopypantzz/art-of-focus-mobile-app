@@ -43,6 +43,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import com.artoffocus.app.notifications.AppNotifier
+import com.artoffocus.app.notifications.describeDelivery
 import com.artoffocus.app.domain.account.AccountStatus
 import com.artoffocus.app.domain.account.hasUnsyncedWork
 import com.artoffocus.app.domain.achievements.AchievementKind
@@ -474,6 +476,98 @@ private fun NotificationSection(state: ProfileUiState, viewModel: ProfileViewMod
     NotificationToggle("Streak at risk", state.notificationPrefs.streakRisk) {
         viewModel.setNotificationPref(NotificationKind.STREAK_RISK, it)
     }
+
+    androidx.compose.foundation.layout.Spacer(Modifier.height(AppSpacing.s4))
+    DeliveryCheck(context)
+}
+
+/**
+ * A one-tap answer to "why didn't I get the notification?".
+ *
+ * Granting the permission is not the same as the notification arriving. It can still be
+ * blocked per-category, or posted and then dropped by an aggressive OEM battery manager --
+ * and until now all of those looked identical: nothing happened, with no explanation. This
+ * posts a real notification through the real path and reports exactly what came back, so a
+ * delivery problem takes one tap to identify instead of a ten-minute rest.
+ */
+@Composable
+private fun DeliveryCheck(context: android.content.Context) {
+    var outcome by remember { mutableStateOf<String?>(null) }
+
+    // Read on each composition rather than remembered: the user may leave, change the setting,
+    // and come back, and a stale "restricted" note would then be actively misleading.
+    val unrestricted = isIgnoringBatteryOptimizations(context)
+
+    Text("If a notification doesn't arrive", style = MaterialTheme.typography.titleSmall, color = AppColors.Text)
+    androidx.compose.foundation.layout.Spacer(Modifier.height(AppSpacing.s1))
+    Text(
+        "Send yourself one now to check it gets through.",
+        style = MaterialTheme.typography.bodySmall,
+        color = AppColors.TextDim,
+    )
+    androidx.compose.foundation.layout.Spacer(Modifier.height(AppSpacing.s2))
+
+    QuietButton(onClick = {
+        outcome = describeDelivery(AppNotifier.sendTestNotification(context), unrestricted)
+    }) { Text("Test notification") }
+
+    outcome?.let { message ->
+        androidx.compose.foundation.layout.Spacer(Modifier.height(AppSpacing.s2))
+        Text(message, style = MaterialTheme.typography.bodySmall, color = AppColors.TextDim)
+    }
+
+    // Only shown when the phone actually has the app restricted -- advice the user cannot act
+    // on, or does not need, is just noise.
+    if (!unrestricted) {
+        androidx.compose.foundation.layout.Spacer(Modifier.height(AppSpacing.s4))
+        Text(
+            "Your phone is allowed to pause this app in the background, which can hold back or " +
+                "silence a rest notification. Allowing it to run freely fixes that.",
+            style = MaterialTheme.typography.bodySmall,
+            color = AppColors.TextDim,
+        )
+        androidx.compose.foundation.layout.Spacer(Modifier.height(AppSpacing.s2))
+        QuietButton(onClick = { openBatterySettings(context) }) { Text("Open battery settings") }
+        androidx.compose.foundation.layout.Spacer(Modifier.height(AppSpacing.s2))
+        Text(
+            """
+                On Vivo/iQOO phones two more settings matter, and neither can be changed from inside an app:
+                · Settings › Battery › High background power consumption › allow Art of Focus
+                · Settings › Apps › Art of Focus › Autostart › on
+                · In Recents, pull down on the app's card to lock it
+            """.trimIndent(),
+            style = MaterialTheme.typography.labelSmall,
+            color = AppColors.TextFaint,
+        )
+    }
+}
+
+
+/**
+ * Whether the phone will let the app run in the background unimpeded. False is the normal
+ * default, and is what makes an exact alarm arrive late or not at all on aggressive skins.
+ */
+private fun isIgnoringBatteryOptimizations(context: android.content.Context): Boolean = runCatching {
+    val manager = context.getSystemService(android.os.PowerManager::class.java) ?: return true
+    manager.isIgnoringBatteryOptimizations(context.packageName)
+}.getOrDefault(true)
+
+/**
+ * Opens the system battery screen. Asks for the exemption directly where that intent is
+ * honoured, and falls back to the app's settings page where it is not -- some OEM builds
+ * refuse the direct request, and a dead button is worse than one extra tap.
+ */
+private fun openBatterySettings(context: android.content.Context) {
+    val direct = android.content.Intent(
+        android.provider.Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,
+        android.net.Uri.parse("package:" + context.packageName),
+    )
+    val fallback = android.content.Intent(
+        android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+        android.net.Uri.parse("package:" + context.packageName),
+    )
+    runCatching { context.startActivity(direct) }
+        .recoverCatching { context.startActivity(fallback) }
 }
 
 @Composable

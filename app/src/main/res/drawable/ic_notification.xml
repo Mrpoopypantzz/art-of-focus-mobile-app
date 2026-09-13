@@ -1,0 +1,31 @@
+<!--
+  The notification icon: the studio diamond, the same mark the Focus tab wears.
+
+  A notification small icon is a MASK, not a picture. Android keeps only the alpha channel and
+  paints its own colour over it, so this must be a flat white silhouette on transparency with
+  no colour, no gradient and no detail that vanishes at 24dp.
+
+  The previous icon was `android.R.drawable.ic_dialog_info` — a framework *dialog* asset, which
+  is none of those things. Stock Android tolerated it; stricter OEM skins (Funtouch OS, One UI,
+  MIUI) can fail to render such a notification at all, which is exactly the "nothing appears in
+  the shade" symptom this replaces.
+
+  24dp canvas, with the mark inset to leave the safe margin the platform expects.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24"
+    android:tint="#FFFFFFFF">
+
+    <!-- Outer diamond, drawn as a ring so the shape reads at small sizes. -->
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M12,2.5 L21.5,12 L12,21.5 L2.5,12 Z M12,5.33 L5.33,12 L12,18.67 L18.67,12 Z" />
+
+    <!-- Inner diamond: the piece uncovered at the centre of the canvas. -->
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M12,8.2 L15.8,12 L12,15.8 L8.2,12 Z" />
+</vector>
