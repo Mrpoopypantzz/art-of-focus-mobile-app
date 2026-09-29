@@ -19,6 +19,7 @@ import com.artoffocus.app.domain.achievements.newlyEarned
 import com.artoffocus.app.domain.profile.statistics
 import com.artoffocus.app.notifications.AppNotifier
 import com.artoffocus.app.notifications.NotificationScheduler
+import com.artoffocus.app.notifications.SessionService
 import com.artoffocus.app.domain.focus.ArtSource
 import com.artoffocus.app.domain.focus.AUTO_CONTINUE_MS
 import com.artoffocus.app.domain.focus.AWAY_PROMPT_MS
@@ -35,6 +36,7 @@ import com.artoffocus.app.domain.focus.continueFromRest
 import com.artoffocus.app.domain.focus.discardAwayTime
 import com.artoffocus.app.domain.focus.isRestComplete
 import com.artoffocus.app.domain.focus.isSittingComplete
+import com.artoffocus.app.domain.focus.hasLiveSession
 import com.artoffocus.app.domain.focus.isValidPair
 import com.artoffocus.app.domain.focus.pauseSession
 import com.artoffocus.app.domain.focus.pieceCount
@@ -123,6 +125,9 @@ class FocusViewModel(
                 )
             }
             checkAwayGapOnResume()
+            // A session that survived process death (I7) has no service: whatever killed the
+            // process killed that too. Restarting it here is legal because the app is on screen.
+            if (hasLiveSession(session.status)) SessionService.start(appContext)
             startTicker()
             // Both are background work, deliberately after the UI has its state: neither may
             // ever be something a sitting waits on (I7).
@@ -255,6 +260,11 @@ class FocusViewModel(
         notifyNewAchievements(earnedBefore, now)
         artworkRepository.clearActive()
         sessionRepository.clear()
+        // The session is over: take the ongoing notification down, and cancel the rest alarm,
+        // which was previously left armed to wake the device for a notification that the
+        // receiver would then correctly decline to post.
+        SessionService.stop(appContext)
+        NotificationScheduler.cancelRestEnd(appContext)
         // M6 — the second of web's two sync moments. Deliberately after the local write and
         // after the session has ended, never during one (I7): if this fails or is slow, the
         // painting is already safe in Room and the next sync picks it up.
@@ -338,6 +348,10 @@ class FocusViewModel(
 
             val session = startSession(now)
             persistSession(session)
+            // The foreground service is what stops the OS freezing or killing this process the
+            // moment the app is backgrounded. Started here, from a user tap, because API 31+
+            // forbids starting one from the background.
+            SessionService.start(appContext)
             _state.update {
                 it.copy(
                     painting = painting,
@@ -398,6 +412,7 @@ class FocusViewModel(
         if (_state.value.cancelCountdown != 0) return
         cancelCountdownJob?.cancel()
         NotificationScheduler.cancelRestEnd(appContext)
+        SessionService.stop(appContext)
         viewModelScope.launch {
             sessionRepository.clear()
             _state.update { it.copy(session = cancelSession(), cancelCountdown = null) }
@@ -408,6 +423,7 @@ class FocusViewModel(
     fun abandonPainting() {
         viewModelScope.launch {
             NotificationScheduler.cancelRestEnd(appContext)
+            SessionService.stop(appContext)
             artworkRepository.clearActive()
             sessionRepository.clear()
             _state.update {
@@ -427,6 +443,9 @@ class FocusViewModel(
         val now = System.currentTimeMillis()
         val resting = startRest(_state.value.session, minutes, now)
         persistSession(resting)
+        // Idempotent, and needed here as well as at Begin: the alarm below is the *backup*, and
+        // it is the service that stops the OS killing this process and cancelling that alarm.
+        SessionService.start(appContext)
         // F14.1 — an exact alarm at the wall-clock rest end; the receiver re-checks state before
         // posting. Keyed by sitting index, which survives the RESTING -> REST_COMPLETE transition
         // (restStartedAt does not, which is why this used to fire only when the app was closed).
@@ -452,6 +471,7 @@ class FocusViewModel(
             else -> current
         }
         persistSession(next)
+        SessionService.start(appContext)
         if (wasResting && next.status != current.status) {
             NotificationScheduler.cancelRestEnd(appContext)
         }

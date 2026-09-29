@@ -110,6 +110,7 @@ class ProfileViewModel(
         val current = _state.value.notificationPrefs
         val next = when (kind) {
             NotificationKind.REST_END -> current.copy(restEnd = enabled)
+            NotificationKind.SITTING_END -> current.copy(sittingEnd = enabled)
             NotificationKind.ACHIEVEMENT -> current.copy(achievement = enabled)
             NotificationKind.DAILY_CALL -> current.copy(dailyCall = enabled)
             NotificationKind.STREAK_RISK -> current.copy(streakRisk = enabled)

@@ -4,12 +4,17 @@ import android.app.AlarmManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
+import android.util.Log
+import com.artoffocus.app.domain.focus.SessionState
+import com.artoffocus.app.domain.focus.SessionStatus
 import androidx.work.ExistingPeriodicWorkPolicy
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import java.util.concurrent.TimeUnit
 
 object NotificationScheduler {
+
+    private const val TAG = "NotificationScheduler"
 
     /**
      * F14.1 — scheduled the moment rest starts; fires at the exact wall-clock rest end.
@@ -36,7 +41,38 @@ object NotificationScheduler {
             } else {
                 alarmManager.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, fireAt, pendingIntent)
             }
+        }.onFailure {
+            // Was a bare runCatching, so an unschedulable alarm — a revoked exact-alarm
+            // permission, or an OEM limit on alarm count — was completely invisible. AppNotifier
+            // already logs its failures; this is the other half of being able to diagnose a
+            // missing notification from logcat instead of by bisecting builds.
+            Log.w(TAG, "could not schedule rest-end alarm: $it")
         }
+    }
+
+    /**
+     * Re-arms the rest-end alarm if a rest is still running, called on every app launch.
+     *
+     * [BootRescheduleReceiver] covers reboot, app update and clock changes, but those are the
+     * cases that announce themselves with a broadcast. Several do not: a force-stop (from
+     * Settings, or from an OEM "clean up" sweep) cancels every pending alarm silently, and on
+     * API 31/32 the user can revoke the exact-alarm permission at any time. Nothing re-armed the
+     * alarm in those cases, so a rest begun before them lost its notification permanently.
+     *
+     * Safe to call unconditionally: it does nothing unless a rest is genuinely in progress and
+     * its end is still in the future, and re-scheduling the same alarm simply replaces it.
+     */
+    fun reconcileRestEnd(context: Context, session: SessionState, pieces: Int) {
+        if (session.status != SessionStatus.RESTING) return
+        val fireAt = session.restStartedAt + session.restMinutes * 60_000L
+        if (fireAt <= System.currentTimeMillis()) return
+        scheduleRestEnd(
+            context = context,
+            restStartedAt = session.restStartedAt,
+            restMinutes = session.restMinutes,
+            pieces = pieces,
+            sittingIndex = session.sittingIndex,
+        )
     }
 
     fun cancelRestEnd(context: Context) {

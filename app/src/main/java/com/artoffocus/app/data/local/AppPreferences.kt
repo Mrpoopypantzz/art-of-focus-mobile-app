@@ -43,6 +43,7 @@ object PrefKeys {
 
     // Notification prefs
     val NOTIFY_REST_END = booleanPreferencesKey("notify.restEnd")
+    val NOTIFY_SITTING_END = booleanPreferencesKey("notify.sittingEnd")
     val NOTIFY_ACHIEVEMENT = booleanPreferencesKey("notify.achievement")
     val NOTIFY_DAILY_CALL = booleanPreferencesKey("notify.dailyCall")
     val NOTIFY_STREAK_RISK = booleanPreferencesKey("notify.streakRisk")

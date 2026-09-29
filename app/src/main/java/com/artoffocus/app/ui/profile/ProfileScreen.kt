@@ -59,6 +59,10 @@ import com.artoffocus.app.domain.focus.formatDuration
 import com.artoffocus.app.domain.friends.formatHandle
 import com.artoffocus.app.domain.museum.formatFocusSpan
 import com.artoffocus.app.domain.notifications.NotificationKind
+import com.artoffocus.app.domain.notifications.batteryExplanation
+import com.artoffocus.app.domain.notifications.batterySteps
+import com.artoffocus.app.ui.common.openNotificationSettings
+import com.artoffocus.app.ui.common.rememberNotificationPermission
 import com.artoffocus.app.ui.common.AppSheet
 import com.artoffocus.app.ui.common.DangerButton
 import com.artoffocus.app.ui.common.PrimaryButton
@@ -414,56 +418,41 @@ private fun FocusLevelCard(level: FocusLevel, selected: Boolean, modifier: Modif
  *
  * On API 33+ nothing can be posted until POST_NOTIFICATIONS is granted, and until this
  * section existed nothing ever asked: the workers ran, AppNotifier's permission check
- * dropped every notification, and the user had no way to find out. The request is made from
- * here rather than at launch so it arrives with an explanation attached.
+ * dropped every notification, and the user had no way to find out.
  *
- * Android needs no equivalent of the web's reliability caveats — WorkManager delivers
- * regardless of app state — so every kind is offered plainly (see domain/notifications).
+ * This is no longer the only place that asks. It was, and that was the bug: a user who never
+ * opened this tab was never asked, so every notification was silently discarded. Onboarding and
+ * the first rest now ask too, all three through [rememberNotificationPermission]. This section
+ * remains the place to change the settings afterwards.
  */
 @Composable
 private fun NotificationSection(state: ProfileUiState, viewModel: ProfileViewModel) {
     val context = LocalContext.current
-    val needsRuntimeGrant = Build.VERSION.SDK_INT >= 33
-
-    fun granted(): Boolean = !needsRuntimeGrant ||
-        ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) ==
-        PackageManager.PERMISSION_GRANTED
-
-    var allowed by remember { mutableStateOf(granted()) }
-    val launcher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { ok ->
-        allowed = ok
-    }
-
-    // The system dialog only appears once; after a denial the switch lives in system settings,
-    // so re-check on resume rather than leaving a stale "off" after the user changes it there.
-    val lifecycleOwner = LocalLifecycleOwner.current
-    DisposableEffect(lifecycleOwner) {
-        val observer = LifecycleEventObserver { _, event ->
-            if (event == Lifecycle.Event.ON_RESUME) allowed = granted()
-        }
-        lifecycleOwner.lifecycle.addObserver(observer)
-        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
-    }
+    val permission = rememberNotificationPermission()
 
     Text("NOTIFICATIONS", style = EyebrowStyle)
     androidx.compose.foundation.layout.Spacer(Modifier.height(AppSpacing.s2))
 
-    if (!allowed) {
+    if (!permission.granted) {
         Text(
-            "Get told when a rest ends and when you earn an achievement.",
+            if (permission.mustUseSettings) {
+                "Notifications are switched off for this app. Your phone will only let you turn " +
+                    "them back on from its own settings."
+            } else {
+                "Get told when a sitting finishes, when a rest ends, and when you earn an achievement."
+            },
             style = MaterialTheme.typography.bodySmall,
         )
         androidx.compose.foundation.layout.Spacer(Modifier.height(AppSpacing.s2))
-        PrimaryButton(onClick = {
-            if (needsRuntimeGrant) {
-                launcher.launch(Manifest.permission.POST_NOTIFICATIONS)
-            } else {
-                allowed = true
-            }
-        }) { Text("Turn on notifications") }
+        PrimaryButton(onClick = permission.request) {
+            Text(if (permission.mustUseSettings) "Open notification settings" else "Turn on notifications")
+        }
         return
     }
 
+    NotificationToggle("Sitting complete", state.notificationPrefs.sittingEnd) {
+        viewModel.setNotificationPref(NotificationKind.SITTING_END, it)
+    }
     NotificationToggle("Rest is over", state.notificationPrefs.restEnd) {
         viewModel.setNotificationPref(NotificationKind.REST_END, it)
     }
@@ -493,6 +482,7 @@ private fun NotificationSection(state: ProfileUiState, viewModel: ProfileViewMod
 @Composable
 private fun DeliveryCheck(context: android.content.Context) {
     var outcome by remember { mutableStateOf<String?>(null) }
+    var blocked by remember { mutableStateOf(false) }
 
     // Read on each composition rather than remembered: the user may leave, change the setting,
     // and come back, and a stale "restricted" note would then be actively misleading.
@@ -508,40 +498,86 @@ private fun DeliveryCheck(context: android.content.Context) {
     androidx.compose.foundation.layout.Spacer(Modifier.height(AppSpacing.s2))
 
     QuietButton(onClick = {
-        outcome = describeDelivery(AppNotifier.sendTestNotification(context), unrestricted)
+        val result = AppNotifier.sendTestNotification(context)
+        blocked = result is AppNotifier.PostResult.AppBlocked ||
+            result is AppNotifier.PostResult.ChannelBlocked ||
+            result is AppNotifier.PostResult.PermissionMissing
+        outcome = describeDelivery(result, unrestricted)
     }) { Text("Test notification") }
 
     outcome?.let { message ->
         androidx.compose.foundation.layout.Spacer(Modifier.height(AppSpacing.s2))
         Text(message, style = MaterialTheme.typography.bodySmall, color = AppColors.TextDim)
+        // A blocked notification is fixable only in system settings, and the message says so --
+        // so it should also offer the way there, rather than leaving the user to find it.
+        if (blocked) {
+            androidx.compose.foundation.layout.Spacer(Modifier.height(AppSpacing.s2))
+            QuietButton(onClick = { openNotificationSettings(context) }) { Text("Open notification settings") }
+        }
     }
 
-    // Only shown when the phone actually has the app restricted -- advice the user cannot act
-    // on, or does not need, is just noise.
+    // Only shown when a real obstacle exists -- advice the user cannot act on, or does not need,
+    // is just noise.
     if (!unrestricted) {
         androidx.compose.foundation.layout.Spacer(Modifier.height(AppSpacing.s4))
         Text(
-            "Your phone is allowed to pause this app in the background, which can hold back or " +
-                "silence a rest notification. Allowing it to run freely fixes that.",
+            batteryExplanation(Build.MANUFACTURER),
             style = MaterialTheme.typography.bodySmall,
             color = AppColors.TextDim,
         )
         androidx.compose.foundation.layout.Spacer(Modifier.height(AppSpacing.s2))
-        QuietButton(onClick = { openBatterySettings(context) }) { Text("Open battery settings") }
+        QuietButton(onClick = { openBatterySettings(context) }) { Text("Allow background use") }
         androidx.compose.foundation.layout.Spacer(Modifier.height(AppSpacing.s2))
+        // Was hardcoded for Vivo/iQOO, the phone the problem was first reported on. A Xiaomi
+        // user following those steps finds nothing: every skin buries this under a different
+        // name. batterySteps names the right menus for the phone actually in the user's hand.
         Text(
-            """
-                On Vivo/iQOO phones two more settings matter, and neither can be changed from inside an app:
-                · Settings › Battery › High background power consumption › allow Art of Focus
-                · Settings › Apps › Art of Focus › Autostart › on
-                · In Recents, pull down on the app's card to lock it
-            """.trimIndent(),
+            batterySteps(Build.MANUFACTURER).joinToString(separator = "\n") { "· $it" },
             style = MaterialTheme.typography.labelSmall,
             color = AppColors.TextFaint,
         )
     }
+
+    // Separate from battery restriction and a separate fix: on API 31/32 the user can revoke
+    // exact alarms, after which the rest alarm degrades to an inexact one that may run minutes
+    // late. Nothing surfaced this before, so a late notification had no visible explanation.
+    if (!canScheduleExactAlarms(context)) {
+        androidx.compose.foundation.layout.Spacer(Modifier.height(AppSpacing.s4))
+        Text(
+            "Exact alarms are switched off for this app, so a rest notification may arrive late.",
+            style = MaterialTheme.typography.bodySmall,
+            color = AppColors.TextDim,
+        )
+        androidx.compose.foundation.layout.Spacer(Modifier.height(AppSpacing.s2))
+        QuietButton(onClick = { openExactAlarmSettings(context) }) { Text("Allow exact alarms") }
+    }
 }
 
+/**
+ * Whether the rest alarm can be scheduled exactly.
+ *
+ * True on API 30 and below, which has no such restriction, and on API 33+, where the app holds
+ * USE_EXACT_ALARM (granted at install). Only API 31/32 can genuinely be false, but it is read
+ * from the platform rather than assumed from the version.
+ */
+private fun canScheduleExactAlarms(context: android.content.Context): Boolean {
+    if (Build.VERSION.SDK_INT < 31) return true
+    val manager = context.getSystemService(android.app.AlarmManager::class.java) ?: return true
+    return runCatching { manager.canScheduleExactAlarms() }.getOrDefault(true)
+}
+
+/** The system screen for the exact-alarm permission, falling back to the app-info page. */
+private fun openExactAlarmSettings(context: android.content.Context) {
+    val direct = android.content.Intent("android.settings.REQUEST_SCHEDULE_EXACT_ALARM")
+        .setData(android.net.Uri.parse("package:" + context.packageName))
+        .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+    val fallback = android.content.Intent(
+        android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+        android.net.Uri.parse("package:" + context.packageName),
+    ).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+    runCatching { context.startActivity(direct) }
+        .recoverCatching { context.startActivity(fallback) }
+}
 
 /**
  * Whether the phone will let the app run in the background unimpeded. False is the normal

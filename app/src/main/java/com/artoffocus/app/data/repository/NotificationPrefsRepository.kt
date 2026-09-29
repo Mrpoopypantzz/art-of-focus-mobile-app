@@ -15,6 +15,7 @@ class NotificationPrefsRepository(private val context: Context) {
         val prefs = context.appDataStore.data.first()
         return NotificationPrefs(
             restEnd = prefs[PrefKeys.NOTIFY_REST_END] ?: DEFAULT_PREFS.restEnd,
+            sittingEnd = prefs[PrefKeys.NOTIFY_SITTING_END] ?: DEFAULT_PREFS.sittingEnd,
             achievement = prefs[PrefKeys.NOTIFY_ACHIEVEMENT] ?: DEFAULT_PREFS.achievement,
             dailyCall = prefs[PrefKeys.NOTIFY_DAILY_CALL] ?: DEFAULT_PREFS.dailyCall,
             streakRisk = prefs[PrefKeys.NOTIFY_STREAK_RISK] ?: DEFAULT_PREFS.streakRisk,
@@ -24,6 +25,7 @@ class NotificationPrefsRepository(private val context: Context) {
     fun observe() = context.appDataStore.data.map { prefs ->
         NotificationPrefs(
             restEnd = prefs[PrefKeys.NOTIFY_REST_END] ?: DEFAULT_PREFS.restEnd,
+            sittingEnd = prefs[PrefKeys.NOTIFY_SITTING_END] ?: DEFAULT_PREFS.sittingEnd,
             achievement = prefs[PrefKeys.NOTIFY_ACHIEVEMENT] ?: DEFAULT_PREFS.achievement,
             dailyCall = prefs[PrefKeys.NOTIFY_DAILY_CALL] ?: DEFAULT_PREFS.dailyCall,
             streakRisk = prefs[PrefKeys.NOTIFY_STREAK_RISK] ?: DEFAULT_PREFS.streakRisk,
@@ -33,6 +35,7 @@ class NotificationPrefsRepository(private val context: Context) {
     suspend fun save(prefs: NotificationPrefs) {
         context.appDataStore.edit { store ->
             store[PrefKeys.NOTIFY_REST_END] = prefs.restEnd
+            store[PrefKeys.NOTIFY_SITTING_END] = prefs.sittingEnd
             store[PrefKeys.NOTIFY_ACHIEVEMENT] = prefs.achievement
             store[PrefKeys.NOTIFY_DAILY_CALL] = prefs.dailyCall
             store[PrefKeys.NOTIFY_STREAK_RISK] = prefs.streakRisk

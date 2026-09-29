@@ -176,12 +176,38 @@ Consequences:
   private storage at import — so no file I/O and no picker sits in the timer's
   path.
 
-**Native improvement over the web app:** the web version needed a whole
-platform-support detector (`domain/notifications.ts`'s `supportLevel`) because
-web notifications from a backgrounded tab are unreliable, and iOS required a
-PWA install. WorkManager/AlarmManager notifications on Android are reliable
-regardless of app or process state, so that entire concern is dropped — see
-`domain/notifications/Notifications.kt`'s doc comment.
+**Correction to an earlier claim here.** This section used to say that
+WorkManager/AlarmManager notifications on Android are "reliable regardless of
+app or process state", so the web version's platform-support detector
+(`domain/notifications.ts`'s `supportLevel`) had no Android equivalent. That was
+wrong, and it is worth recording *why*, because the claim caused a real bug to
+go unexamined for several releases.
+
+Scheduling an alarm correctly is not sufficient on Android. The OS freezes and
+then kills a backgrounded process that has no visible ongoing work — stock
+Android patiently, MIUI/ColorOS/Funtouch/One UI within seconds — and when an
+OEM task cleaner force-stops an app it **cancels that app's pending alarms**.
+A perfectly scheduled exact alarm then simply never fires. Separately, nothing
+was left running to notice a *sitting* had finished, so only rest end had any
+background path at all.
+
+The answer is a foreground service, which is the only mechanism Android offers
+for declaring work ongoing:
+[SessionService.kt](app/src/main/java/com/artoffocus/app/notifications/SessionService.kt)
+holds an ongoing notification for the duration of a session and posts the
+sitting-complete notification that previously could not exist.
+
+**The containment rule that keeps this inside I7.** The service **reads session
+state and never writes it.** It derives every number it shows from wall-clock
+timestamps through the pure functions in `domain/focus`, and the ViewModel's
+ticker remains the only thing that advances a session. Delete the service and
+the timer is unchanged — it loses resilience, not correctness. Pinned by
+`SessionServiceTest`, which runs the service over a sitting whose time is
+already up and asserts the persisted session comes back identical.
+
+The alarm is also re-armed on app launch
+([NotificationScheduler.reconcileRestEnd]) as well as on boot, app update and
+clock change, because a force-stop cancels alarms while broadcasting nothing.
 
 ---
 
@@ -356,6 +382,9 @@ scope).
   see [AppPreferences.kt](app/src/main/java/com/artoffocus/app/data/local/AppPreferences.kt).
   Every repository follows the same "validate on read, discard invalid state,
   never repair it" discipline as the web app's `state/*.ts` modules.
-- **Notifications are reliable by construction** on Android (WorkManager),
-  removing the web version's reliable/best-effort split entirely — see the
-  amendment under I7.
+- **Notifications need a foreground service to be reliable**, not merely a
+  correctly scheduled alarm: Android kills backgrounded processes and an OEM
+  task cleaner cancels their pending alarms when it does. `SessionService`
+  holds an ongoing notification for the length of a session; the service reads
+  session state and never writes it, so the timer's correctness does not depend
+  on it — see the correction under I7.

@@ -5,16 +5,18 @@ import android.content.Context
 import android.content.Intent
 import com.artoffocus.app.ArtOfFocusApp
 import com.artoffocus.app.domain.focus.MAX_PIECES
-import com.artoffocus.app.domain.focus.SessionStatus
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 
 /**
- * I7/M8 — re-arms what a reboot destroys.
+ * I7/M8 — re-arms what a reboot, an app update, or a clock change destroys.
  *
  * The daily/streak reminders are WorkManager jobs and survive on their own; this re-arms them
- * for safety. The rest-end alarm does NOT survive: an AlarmManager alarm is dropped on reboot.
+ * for safety. The rest-end alarm does NOT survive: an AlarmManager alarm is dropped on reboot,
+ * dropped again when the app is updated, and, being RTC_WAKEUP (wall-clock), becomes due at the
+ * wrong moment if the clock or timezone moves. Only BOOT_COMPLETED was handled, so shipping an
+ * update to a user who was mid-rest silently lost their notification.
  *
  * This receiver used to skip it, on the reasoning that the alarm would be "re-derived from
  * session state on next app open". That reasoning was wrong in the one case that matters — the
@@ -25,11 +27,14 @@ import kotlinx.coroutines.launch
  * Guarded so a stale session cannot resurrect a bogus alarm: it must still be RESTING and its
  * end must still be in the future. [RestEndReceiver] re-checks state before posting anyway, so
  * a wrong alarm here would be dropped rather than fire falsely.
+ *
+ * Broadcast-driven only. A force-stop cancels alarms without broadcasting anything, which is why
+ * [NotificationScheduler.reconcileRestEnd] also runs on every app launch.
  */
 class BootRescheduleReceiver : BroadcastReceiver() {
 
     override fun onReceive(context: Context, intent: Intent) {
-        if (intent.action != Intent.ACTION_BOOT_COMPLETED) return
+        if (intent.action !in HANDLED_ACTIONS) return
         NotificationScheduler.rescheduleBestEffortReminders(context)
 
         val appContext = context.applicationContext
@@ -42,21 +47,25 @@ class BootRescheduleReceiver : BroadcastReceiver() {
                 // sittingIndex exceeds them. MAX_PIECES keeps a valid session from being thrown
                 // away; the status and deadline checks below are what actually gate the alarm.
                 val session = container.sessionRepository.load(MAX_PIECES)
-                if (session.status != SessionStatus.RESTING) return@launch
-
-                val fireAt = session.restStartedAt + session.restMinutes * 60_000L
-                if (fireAt <= System.currentTimeMillis()) return@launch
-
-                NotificationScheduler.scheduleRestEnd(
-                    context = appContext,
-                    restStartedAt = session.restStartedAt,
-                    restMinutes = session.restMinutes,
-                    pieces = MAX_PIECES,
-                    sittingIndex = session.sittingIndex,
-                )
+                // Shared with the on-launch path so the status and deadline guards cannot drift
+                // apart between the two.
+                NotificationScheduler.reconcileRestEnd(appContext, session, MAX_PIECES)
             } finally {
                 pending.finish()
             }
         }
+    }
+
+    private companion object {
+        /**
+         * TIME_SET and TIMEZONE_CHANGED matter because the alarm is RTC_WAKEUP: moving the clock
+         * moves when it is due, so it has to be recomputed against the new wall clock.
+         */
+        val HANDLED_ACTIONS = setOf(
+            Intent.ACTION_BOOT_COMPLETED,
+            Intent.ACTION_MY_PACKAGE_REPLACED,
+            Intent.ACTION_TIME_CHANGED,
+            Intent.ACTION_TIMEZONE_CHANGED,
+        )
     }
 }

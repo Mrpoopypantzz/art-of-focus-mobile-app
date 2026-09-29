@@ -7,7 +7,9 @@ import com.artoffocus.app.data.local.appDataStore
 import com.artoffocus.app.domain.focus.IDLE_SESSION
 import com.artoffocus.app.domain.focus.SessionState
 import com.artoffocus.app.domain.focus.SessionStatus
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.decodeFromString
@@ -43,6 +45,21 @@ class SessionRepository(private val context: Context) {
         val raw = context.appDataStore.data.first()[PrefKeys.SESSION_JSON] ?: return IDLE_SESSION
         val state = runCatching { json.decodeFromString<SessionDto>(raw) }.getOrNull()?.toDomain() ?: return IDLE_SESSION
         return if (state.sittingIndex in 0..pieces) state else IDLE_SESSION
+    }
+
+    /**
+     * The same validated read as [load], as a stream.
+     *
+     * Added for the ongoing session notification, which has to follow the session while the app
+     * is closed and cannot call a one-shot [load] on a timer without re-reading DataStore every
+     * second. Applies the identical discard rule, so the notification can never show a session
+     * the app itself would refuse to resume.
+     */
+    fun observe(pieces: Int): Flow<SessionState> = context.appDataStore.data.map { prefs ->
+        val raw = prefs[PrefKeys.SESSION_JSON] ?: return@map IDLE_SESSION
+        val state = runCatching { json.decodeFromString<SessionDto>(raw) }.getOrNull()?.toDomain()
+            ?: return@map IDLE_SESSION
+        if (state.sittingIndex in 0..pieces) state else IDLE_SESSION
     }
 
     suspend fun save(state: SessionState) {

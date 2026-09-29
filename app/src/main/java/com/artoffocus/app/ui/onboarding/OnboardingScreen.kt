@@ -36,9 +36,11 @@ import com.artoffocus.app.domain.focus.formatDuration
 import com.artoffocus.app.domain.onboarding.OnboardingStep
 import com.artoffocus.app.domain.onboarding.SLIDES
 import com.artoffocus.app.domain.onboarding.isLastSlide
+import com.artoffocus.app.ui.common.rememberNotificationPermission
 import com.artoffocus.app.domain.profile.MAX_GOAL
 import com.artoffocus.app.domain.profile.MAX_USERNAME
 import com.artoffocus.app.ui.common.PrimaryButton
+import com.artoffocus.app.ui.common.QuietButton
 import com.artoffocus.app.ui.theme.AppColors
 import com.artoffocus.app.ui.theme.AppRadius
 import com.artoffocus.app.ui.theme.AppSpacing
@@ -183,6 +185,9 @@ private fun SetupStep(onSkip: () -> Unit, onFinish: (String, String, FocusLevel)
                 color = AppColors.TextDim,
                 style = MaterialTheme.typography.bodySmall,
             )
+
+            Spacer(Modifier.height(AppSpacing.s5))
+            NotificationAsk()
         }
 
         Spacer(Modifier.height(AppSpacing.s4))
@@ -197,6 +202,37 @@ private fun SetupStep(onSkip: () -> Unit, onFinish: (String, String, FocusLevel)
                 modifier = Modifier.weight(1f),
             ) { Text("Enter the studio") }
         }
+    }
+}
+
+/**
+ * Asks for notification permission here, at the end of the introduction.
+ *
+ * Until now the request lived in Profile alone, which meant a user who never opened that tab was
+ * never asked — and every notification was then silently discarded. This is the "catch everyone"
+ * half of the fix; the Focus screen asks again at the first rest, where the reason is concrete,
+ * for anyone who declines or skips past this.
+ *
+ * Deliberately not a blocking step and not a slide of its own: the introduction is premise, not
+ * a permissions gate (F12.1), and nothing here stops the user pressing on. It disappears once
+ * granted rather than showing a satisfied checkbox, since the only useful state is the unfixed one.
+ */
+@Composable
+private fun NotificationAsk() {
+    val permission = rememberNotificationPermission()
+    if (permission.granted) return
+
+    Text("One thing to allow", style = MaterialTheme.typography.bodySmall)
+    Spacer(Modifier.height(AppSpacing.s1))
+    Text(
+        "So the app can tell you when a sitting finishes and when a rest is over — the two " +
+            "moments you would otherwise have to watch the clock for.",
+        color = AppColors.TextDim,
+        style = MaterialTheme.typography.bodySmall,
+    )
+    Spacer(Modifier.height(AppSpacing.s2))
+    QuietButton(onClick = permission.request) {
+        Text(if (permission.mustUseSettings) "Open notification settings" else "Allow notifications")
     }
 }
 

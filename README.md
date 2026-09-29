@@ -28,7 +28,7 @@ domain/<feature>/       pure Kotlin business rules, no Android deps, unit-tested
 data/local/             Room entities/DAOs, DataStore key definitions
 data/repository/        validates on read, discards invalid state, never repairs
 ui/<feature>/           ViewModel (StateFlow) + Jetpack Compose screen
-notifications/          WorkManager-backed rest-end / daily / streak-risk notifications
+notifications/          foreground session service, exact rest-end alarm, daily/streak workers
 ```
 
 Duration math, session state transitions, and puzzle-piece derivation live

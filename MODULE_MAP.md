@@ -247,9 +247,32 @@ focus-hour milestones (1/10/50/100/500h), completion milestones
 ## M8 — Notifications
 
 Status: **built and live-tested on a device.** `notifications/NotificationChannels.kt`,
-`AppNotifier.kt`, `RestEndReceiver.kt`, `DailyReminderWorker.kt`,
-`StreakRiskWorker.kt`, `AppWorkerFactory.kt`, `NotificationScheduler.kt`,
-`DeliveryMessages.kt`.
+`AppNotifier.kt`, `SessionService.kt`, `RestEndReceiver.kt`,
+`BootRescheduleReceiver.kt`, `DailyReminderWorker.kt`, `StreakRiskWorker.kt`,
+`AppWorkerFactory.kt`, `NotificationScheduler.kt`, `DeliveryMessages.kt`, plus
+`domain/notifications/OemGuidance.kt`, `domain/focus/SessionNotification.kt` and
+`ui/common/NotificationPermission.kt`.
+
+**A correctly scheduled alarm was not enough, and this is the heart of M8.**
+Android freezes and then kills a backgrounded process with no visible ongoing
+work, and an OEM task cleaner force-stopping the app **cancels its pending
+alarms** — so the exact alarm below could be armed perfectly and still never
+fire. Nothing was left running to notice a *sitting* had finished either, so
+rest end was the only event with any background path.
+
+`SessionService` is the answer: a foreground service holding an ongoing,
+silent, non-dismissible notification with the live countdown for the length of a
+session, started from user taps in `FocusViewModel` (Begin / Take Rest /
+Continue) because API 31+ forbids a background start. It is the only mechanism
+Android offers for declaring work ongoing.
+
+**Its containment rule is load-bearing: the service reads session state and
+never writes it.** Every number shown is derived from wall-clock timestamps via
+`domain/focus/SessionNotification.kt`; the ViewModel's ticker stays the only
+thing that advances a session, so I7 and I11 cannot be reached from here.
+`SessionServiceTest` pins this by running the service over a sitting whose time
+is already up and asserting the persisted session is unchanged. The service also
+posts the sitting-complete notification, which could not exist before it.
 
 **Rest end is an exact AlarmManager alarm, not a worker.** WorkManager's
 `setInitialDelay` is explicitly inexact and can slip minutes under Doze, which
@@ -260,16 +283,38 @@ zeroes — so with the app open the check compared 0 against a real timestamp an
 the notification was silently dropped. It fired only when the app was closed.
 Verified by A/B against the pre-fix build on one device.
 
-The alarm is also re-armed after a reboot (`BootRescheduleReceiver`), since
-exact alarms do not survive one; rebooting mid-rest used to lose the
-notification permanently.
+The alarm is re-armed in four situations, each of which used to lose it
+permanently. `BootRescheduleReceiver` handles reboot, **app update**
+(`MY_PACKAGE_REPLACED` — an update cancels alarms exactly as a reboot does, and
+this was unhandled, so shipping a release to a user mid-rest dropped their
+notification) and clock/timezone changes (the alarm is `RTC_WAKEUP`, so moving
+the clock moves when it is due). `NotificationScheduler.reconcileRestEnd` also
+runs on every app launch from `ArtOfFocusApp`, covering a force-stop and a
+revoked exact-alarm permission — neither of which broadcasts anything.
+`RestEndAlarmTest` pins the guards: it re-arms a rest in progress and nothing
+else. `RestEndReceiver` now also holds a short `PARTIAL_WAKE_LOCK` across its two
+DataStore reads, since `goAsync` keeps the receiver alive but not the CPU.
 
-The other three kinds ride on WorkManager, which is fine for a daily nudge.
-"Reliable regardless of app state" needs one qualification the earlier text
-lacked: every notification is silently dropped when POST_NOTIFICATIONS has not
-been granted, and Profile's delivery self-test exists to surface exactly that.
-On a fresh install the permission is only ever requested from Profile, so a user
-who never opens that screen gets nothing — a known gap, flagged not fixed.
+The daily and streak kinds ride on WorkManager, which is fine for a daily nudge.
+
+**The permission gap is closed.** Every notification is silently dropped when
+POST_NOTIFICATIONS has not been granted, and the request used to live *only* in
+Profile — so a user who installed the app, ran a session and took a rest without
+ever opening that tab got nothing at all, silently. It is now asked in three
+places through the shared `ui/common/NotificationPermission.kt`: at the end of
+onboarding (catches everyone), when first choosing a rest (where the reason is
+concrete and the grant rate highest), and still in Profile for changing it
+later. That helper also handles the case most implementations miss — after two
+declines Android never shows the dialog again, so a button wired straight to
+`launch` becomes silently dead; it detects that and opens notification settings
+instead.
+
+Profile's delivery self-test now also reports exact-alarm status with a button to
+fix it, offers a route to notification settings when a notification is blocked
+rather than merely ungranted, and gets its OEM battery advice from the pure
+`domain/notifications/OemGuidance.kt`. That advice was hardcoded for Vivo/iQOO,
+the phone the problem was first reported on, which meant a Xiaomi user was told
+to find a menu that does not exist on their phone.
 
 The small icon is `res/drawable/ic_notification.xml`, a flat monochrome mask.
 It was `android.R.drawable.ic_dialog_info` — a framework dialog asset, which
@@ -286,8 +331,9 @@ earned" toggle controlled nothing while the sign-in copy promised it would.
 ## Testing
 
 `app/src/test/` mirrors the source web app's `*.test.ts` invariant suites as
-JUnit tests — 130 as of the last full run, plus 5 instrumented migration
-tests (`app/src/androidTest`), covering I1 through I15's
+JUnit tests — 148 as of the last full run, plus instrumented tests in
+`app/src/androidTest` (migrations, additive merge, the rest-end alarm guards,
+and the session service's read-only containment), covering I1 through I15's
 domain-layer logic (`DurationsTest`, `SessionTest`, `PuzzleTest`,
 `MuseumTest`, `StatisticsTest`, `AchievementsTest`, `HandleTest`,
 `FriendsTest`). Run with:

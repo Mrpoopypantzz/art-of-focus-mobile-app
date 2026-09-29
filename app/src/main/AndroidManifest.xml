@@ -6,6 +6,23 @@
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.INTERNET" />
 
+    <!-- The ongoing session notification. Without a foreground service, the process is frozen
+         or killed by the OS once the app is backgrounded (every Android build does this; some
+         OEM skins do it within seconds), which silently cancels the rest-end alarm and means a
+         finished sitting is never announced. The service is a display of session state, never
+         its driver: it reads what DataStore already holds and derives the countdown from
+         wall-clock timestamps, so I7 and I11 are untouched. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+
+    <!-- RestEndReceiver does two DataStore reads inside goAsync()'s ~10s budget on a process
+         the alarm has just woken. Without a wake lock the device can return to sleep mid-read. -->
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+
+    <!-- Required for ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS. Profile's "Open battery
+         settings" button fires that intent and, lacking this, threw every single time and fell
+         back to the plain app-info page — so the one-tap exemption never once worked. -->
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+
     <!-- F14.1 — the rest-end alarm must fire on time; WorkManager's inexact delay could slip
          by minutes under Doze. USE_EXACT_ALARM is the calendar/alarm-clock variant: granted at
          install, no runtime prompt. SCHEDULE_EXACT_ALARM is declared alongside it only to cover
@@ -32,11 +49,19 @@
             </intent-filter>
         </activity>
 
+        <!-- Exact alarms do not survive a reboot, an app update, or a clock change, and each
+             one used to lose a rest notification permanently. BOOT_COMPLETED was handled;
+             MY_PACKAGE_REPLACED was not, so shipping an update mid-rest dropped the alarm. The
+             two clock actions matter because the alarm is RTC_WAKEUP (wall-clock), so changing
+             the time moves when it is due. -->
         <receiver
             android:name=".notifications.BootRescheduleReceiver"
             android:exported="false">
             <intent-filter>
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+                <action android:name="android.intent.action.TIME_SET" />
+                <action android:name="android.intent.action.TIMEZONE_CHANGED" />
             </intent-filter>
         </receiver>
 
@@ -44,6 +69,14 @@
              acting on our own PendingIntent, ever delivers to it. -->
         <receiver
             android:name=".notifications.RestEndReceiver"
+            android:exported="false" />
+
+        <!-- Not exported and started only from the ViewModel while the app is in the
+             foreground, which is what makes starting it legal on API 31+. No
+             foregroundServiceType is declared: a focus timer is none of Android 14's typed
+             categories, and naming one that misdescribes the app would be worse than none. -->
+        <service
+            android:name=".notifications.SessionService"
             android:exported="false" />
 
         <!-- We provide WorkManager's Configuration ourselves (Configuration.Provider on

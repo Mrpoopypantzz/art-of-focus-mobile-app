@@ -100,6 +100,20 @@ object AppNotifier {
         text = "Ready for the next sitting whenever you are.",
     )
 
+    /**
+     * "A piece is ready", posted by [SessionService] when a sitting's time is up.
+     *
+     * The app could not tell the user this at all before: only rest-end had any background
+     * path, so a sitting finishing while the app was closed was completely silent.
+     */
+    fun notifySittingEnd(context: Context): PostResult = notify(
+        context,
+        NotificationChannels.SITTING_END,
+        id = 5,
+        title = "A piece is ready",
+        text = "Your sitting is complete — open to see what it revealed.",
+    )
+
     fun notifyDailyCall(context: Context): PostResult = notify(
         context,
         NotificationChannels.DAILY_CALL,

@@ -23,6 +23,16 @@ object NotificationChannels {
     /** Retired in favour of [REST_END]; deleted on launch so it stops cluttering settings. */
     private const val REST_END_LEGACY = "rest_end"
 
+    /**
+     * The ongoing session notification. IMPORTANCE_LOW deliberately: it must be present, never
+     * interruptive — it is on screen for the whole sitting, so a sound or a peek would make the
+     * app unusable. The loud one is [REST_END].
+     */
+    const val SESSION = "session_v1"
+
+    /** "A piece is ready." Its own channel so it can be silenced without losing rest-end. */
+    const val SITTING_END = "sitting_end_v1"
+
     const val DAILY_CALL = "daily_call"
     const val STREAK_RISK = "streak_risk"
     const val ACHIEVEMENT = "achievement"
@@ -40,6 +50,23 @@ object NotificationChannels {
             },
         )
         runCatching { manager.deleteNotificationChannel(REST_END_LEGACY) }
+
+        // LOW: shows in the shade with no sound and no peek. See the doc on SESSION.
+        manager.createNotificationChannel(
+            NotificationChannel(SESSION, "Session in progress", NotificationManager.IMPORTANCE_LOW).apply {
+                description = "The live countdown while you are focusing or resting."
+                setShowBadge(false)
+            },
+        )
+
+        // HIGH like rest end: a finished sitting is the other thing the user is actively
+        // waiting to hear about, and it could not be announced at all before.
+        manager.createNotificationChannel(
+            NotificationChannel(SITTING_END, "Sitting complete", NotificationManager.IMPORTANCE_HIGH).apply {
+                description = "Tells you when a sitting has finished and a piece is revealed."
+                enableVibration(true)
+            },
+        )
 
         manager.createNotificationChannel(
             NotificationChannel(DAILY_CALL, "Daily studio call", NotificationManager.IMPORTANCE_LOW),

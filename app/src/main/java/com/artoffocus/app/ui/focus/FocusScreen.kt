@@ -67,6 +67,7 @@ import com.artoffocus.app.domain.focus.restLockRemainingMs
 import com.artoffocus.app.domain.focus.restRemainingMs
 import com.artoffocus.app.domain.focus.revealedCount
 import com.artoffocus.app.domain.focus.restOptions
+import com.artoffocus.app.ui.common.rememberNotificationPermission
 import com.artoffocus.app.domain.focus.sessionProgress
 import com.artoffocus.app.domain.focus.sittingAnchors
 import com.artoffocus.app.domain.focus.sittingsFor
@@ -877,6 +878,7 @@ private fun RestSheet(
             ) {
                 val restValues = remember { restOptions() }
                 WheelPicker(values = restValues, selected = minutes, onSelect = { minutes = it }, label = durationLabel)
+                RestNotificationAsk()
             }
         }
         RestPhase.RESTING, RestPhase.REST_COMPLETE -> {
@@ -916,6 +918,39 @@ private fun RestSheet(
                 }
             }
         }
+    }
+}
+
+/**
+ * Asks for notification permission at the moment it first matters.
+ *
+ * The user is on the point of walking away from the phone for several minutes, so "we will tell
+ * you when it is over" needs no explaining — which is why this is the highest-value place in the
+ * whole app to ask, and why the original design's single request buried in Profile was the wrong
+ * one. Onboarding asks first; this catches anyone who skipped or declined there.
+ *
+ * Nothing here blocks the rest. The permission is a convenience and never a carrier of progress
+ * (I7): decline it and the rest runs exactly the same, it simply ends quietly.
+ */
+@Composable
+private fun RestNotificationAsk() {
+    val permission = rememberNotificationPermission()
+    if (permission.granted) return
+
+    androidx.compose.foundation.layout.Spacer(Modifier.height(AppSpacing.s3))
+    Text(
+        if (permission.mustUseSettings) {
+            "Notifications are switched off, so this rest will end quietly. Your phone only lets " +
+                "you turn them back on from its settings."
+        } else {
+            "Allow notifications and the app will tell you when this rest is over."
+        },
+        style = MaterialTheme.typography.bodySmall,
+        color = AppColors.TextDim,
+    )
+    androidx.compose.foundation.layout.Spacer(Modifier.height(AppSpacing.s2))
+    QuietButton(onClick = permission.request) {
+        Text(if (permission.mustUseSettings) "Open notification settings" else "Allow notifications")
     }
 }
 
